@@ -42,9 +42,10 @@ async function main() {
 
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
 
+  let admin = null;
   if (!existing) {
     const passwordHash = await bcrypt.hash(adminPassword, 10);
-    const admin = await prisma.$transaction(async (tx) => {
+    admin = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           fullName: adminName,
@@ -63,7 +64,7 @@ async function main() {
     });
     console.log(`Admin account ready: ${admin.email} (activation: true)`);
   } else {
-    console.log(`Admin account already exists: ${admin.email}`);
+    console.log(`Admin account already exists: ${existing.email}`);
   }
 }
 
