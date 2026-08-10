@@ -1,0 +1,143 @@
+// LaaniPay Ecosystem — Prisma schema
+// Database: Neon (serverless Postgres) via pooled connection string (DATABASE_URL).
+// Driver adapter: @prisma/adapter-neon (see src/lib/prisma.js).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(cuid())
+  fullName         String   @map("full_name")
+  email            String   @unique
+  phone            String
+  passwordHash     String   @map("password_hash")
+  activationStatus Boolean  @default(false) @map("activation_status")
+  referralCode     String   @unique @default(cuid()) @map("referral_code")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  wallet                   Wallet?
+  activationPayments       ActivationPayment[]
+  downline                 MlmReferral[] @relation("Referrer")
+  placement                MlmReferral[] @relation("ReferredUser")
+  mlmRanks                 MlmRank[]
+  contributionSubscriptions ContributionSubscription[]
+  auditLogs                AuditLog[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model ActivationPayment {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  paystackReference String   @unique @map("paystack_reference")
+  amount           Int
+  status           String    @default("pending")
+  verifiedAt       DateTime? @map("verified_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("activation_payments")
+}
+
+model MlmReferral {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  referrerId  String?  @map("referrer_id")
+  level       Int
+  bonusEarned Int      @default(0) @map("bonus_earned")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user     User  @relation("ReferredUser", fields: [userId], references: [id], onDelete: Cascade)
+  referrer User? @relation("Referrer", fields: [referrerId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, referrerId, level])
+  @@index([referrerId])
+  @@index([userId])
+  @@map("mlm_referrals")
+}
+
+model MlmRank {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  rank       String
+  achievedAt DateTime @default(now()) @map("achieved_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mlm_ranks")
+}
+
+model ContributionPlan {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  monthlyAmount Int      @map("monthly_amount")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  subscriptions ContributionSubscription[]
+
+  @@map("contribution_plans")
+}
+
+model ContributionSubscription {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  planId          String   @map("plan_id")
+  status          String   @default("active")
+  nextPaymentDate DateTime @map("next_payment_date")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     ContributionPlan      @relation(fields: [planId], references: [id])
+  payments ContributionPayment[]
+
+  @@index([userId])
+  @@map("contribution_subscriptions")
+}
+
+model ContributionPayment {
+  id                String    @id @default(cuid())
+  subscriptionId    String    @map("subscription_id")
+  paystackReference String    @unique @map("paystack_reference")
+  amount            Int
+  status            String    @default("pending")
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  subscription ContributionSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("contribution_payments")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("audit_logs")
+}

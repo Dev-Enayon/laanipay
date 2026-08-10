@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-light text-slate-800 antialiased;
+    font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .container-lp {
+    @apply mx-auto w-full max-w-6xl px-6;
+  }
+
+  .glass {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply rounded-2xl border border-white/15 bg-white/10 backdrop-blur-2xl;
+  }
+
+  .card-light {
+    @apply rounded-2xl border border-slate-100 bg-white shadow-card;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-semibold text-white transition-all duration-300 hover:bg-primary-dark hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-neon {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-neon px-6 py-3 font-bold text-ink transition-all duration-300 hover:shadow-neon disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 px-6 py-3 font-semibold text-white backdrop-blur transition-all duration-300 hover:border-white/50 hover:bg-white/10;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-primary focus:ring-4 focus:ring-primary/10;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary via-primary-dark to-neon bg-clip-text text-transparent;
+  }
+
+  .hero-gradient {
+    background: linear-gradient(120deg, #0050ff, #002b73 40%, #00ff88);
+    background-size: 220% 220%;
+    animation: gradient-shift 12s ease infinite;
+  }
+
+  .section-dark {
+    @apply bg-ink text-white;
+  }
+
+  .section-title {
+    @apply text-3xl font-bold md:text-4xl;
+  }
+}

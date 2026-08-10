@@ -1,0 +1,76 @@
+import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
+import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
+import { PrismaNeon } from '@prisma/adapter-neon';
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  console.error('DATABASE_URL is not set — cannot run seed.');
+  process.exit(1);
+}
+
+const adapter = new PrismaNeon({ connectionString: databaseUrl });
+const prisma = new PrismaClient({ adapter });
+
+const CONTRIBUTION_PLANS = [
+  { name: 'Starter Saver', monthlyAmount: 100000 },
+  { name: 'Growth Saver', monthlyAmount: 200000 },
+  { name: 'Premium Saver', monthlyAmount: 500000 },
+];
+
+async function main() {
+  for (const plan of CONTRIBUTION_PLANS) {
+    await prisma.contributionPlan.upsert({
+      where: { name: plan.name },
+      update: { monthlyAmount: plan.monthlyAmount },
+      create: plan,
+    });
+    console.log(`Plan ready: ${plan.name} (₦${plan.monthlyAmount / 100})`);
+  }
+
+  const adminEmail = (process.env.ADMIN_EMAIL ?? 'admin@laanipay.ng').trim().toLowerCase();
+  let adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    adminPassword = randomBytes(12).toString('base64url');
+    console.log(
+      `ADMIN_PASSWORD was not set — generated: ${adminPassword} (set ADMIN_PASSWORD to choose your own)`,
+    );
+  }
+  const adminName = process.env.ADMIN_NAME ?? 'LaaniPay Admin';
+
+  const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+
+  if (!existing) {
+    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    const admin = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          fullName: adminName,
+          email: adminEmail,
+          phone: '+2340000000000',
+          passwordHash,
+          activationStatus: true,
+        },
+      });
+      await tx.wallet.create({ data: { userId: user.id } });
+      await tx.mlmRank.create({ data: { userId: user.id, rank: 'marketer' } });
+      await tx.auditLog.create({
+        data: { userId: user.id, action: 'ADMIN_SEEDED', metadata: {} },
+      });
+      return user;
+    });
+    console.log(`Admin account ready: ${admin.email} (activation: true)`);
+  } else {
+    console.log(`Admin account already exists: ${admin.email}`);
+  }
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async (err) => {
+    console.error('Seed failed:', err);
+    await prisma.$disconnect();
+    process.exit(1);
+  });
