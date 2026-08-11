@@ -53,6 +53,7 @@ async function main() {
           phone: '+2340000000000',
           passwordHash,
           activationStatus: true,
+          emailVerifiedAt: new Date(),
         },
       });
       await tx.wallet.create({ data: { userId: user.id } });
@@ -64,6 +65,10 @@ async function main() {
     });
     console.log(`Admin account ready: ${admin.email} (activation: true)`);
   } else {
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
+    });
     console.log(`Admin account already exists: ${existing.email}`);
   }
 }

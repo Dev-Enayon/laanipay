@@ -2,6 +2,12 @@ import { prisma } from './prisma.js';
 import { verifyTransaction } from './paystack.js';
 import { creditActivationBonuses } from './mlm.js';
 import { AppError } from '../middleware/error.js';
+import {
+  sendActivationSuccessEmail,
+  sendBonusReceivedEmail,
+  sendRankUpEmail,
+  sendContributionReceiptEmail,
+} from './mailer.js';
 
 // Settles a payment reference against Paystack and, on success, records the
 // outcome in the database. Idempotent and safe under concurrent calls
@@ -36,6 +42,8 @@ export async function settlePayment({ reference, expectedUserId }) {
     }
 
     let bonusesCredited = [];
+    let rankChanges = [];
+    let freshlyActivated = false;
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.activationPayment.updateMany({
@@ -44,11 +52,14 @@ export async function settlePayment({ reference, expectedUserId }) {
       });
 
       if (claimed.count === 1) {
+        freshlyActivated = true;
         await tx.user.update({
           where: { id: activation.userId },
           data: { activationStatus: true },
         });
-        bonusesCredited = await creditActivationBonuses(activation.userId, tx);
+        const mlmResult = await creditActivationBonuses(activation.userId, tx);
+        bonusesCredited = mlmResult.credited;
+        rankChanges = mlmResult.rankChanges;
         await tx.auditLog.create({
           data: {
             userId: activation.userId,
@@ -59,12 +70,31 @@ export async function settlePayment({ reference, expectedUserId }) {
       }
     });
 
+    if (freshlyActivated) {
+      const user = await prisma.user.findUnique({ where: { id: activation.userId } });
+      if (user) {
+        sendActivationSuccessEmail({ to: user.email, name: user.fullName, bonuses: bonusesCredited });
+        for (const bonus of bonusesCredited) {
+          sendBonusReceivedEmail({
+            to: bonus.email,
+            name: bonus.name,
+            referrerName: user.fullName,
+            bonus: bonus.bonus,
+            level: bonus.level,
+          });
+        }
+        for (const change of rankChanges) {
+          sendRankUpEmail({ to: change.email, name: change.name, rank: change.rank });
+        }
+      }
+    }
+
     return { verified: true, kind: 'activation', bonusesCredited };
   }
 
   const contribution = await prisma.contributionPayment.findUnique({
     where: { paystackReference: reference },
-    include: { subscription: true },
+    include: { subscription: { include: { plan: true } } },
   });
 
   if (contribution) {
@@ -90,6 +120,8 @@ export async function settlePayment({ reference, expectedUserId }) {
     const nextPaymentDate = new Date(contribution.subscription.nextPaymentDate);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
+    let freshlyVerified = false;
+
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.contributionPayment.updateMany({
         where: { id: contribution.id, status: 'pending' },
@@ -97,6 +129,7 @@ export async function settlePayment({ reference, expectedUserId }) {
       });
 
       if (claimed.count === 1) {
+        freshlyVerified = true;
         await tx.contributionSubscription.update({
           where: { id: contribution.subscriptionId },
           data: { nextPaymentDate },
@@ -110,6 +143,20 @@ export async function settlePayment({ reference, expectedUserId }) {
         });
       }
     });
+
+    if (freshlyVerified) {
+      const user = await prisma.user.findUnique({ where: { id: contribution.subscription.userId } });
+      if (user) {
+        sendContributionReceiptEmail({
+          to: user.email,
+          name: user.fullName,
+          planName: contribution.subscription.plan?.name ?? 'Contribution plan',
+          amount: contribution.amount,
+          reference,
+          nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
+        });
+      }
+    }
 
     return { verified: true, kind: 'contribution' };
   }

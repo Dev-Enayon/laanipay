@@ -1,16 +1,23 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
+import { randomBytes } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { issueTokenPair, verifyRefreshToken } from '../lib/jwt.js';
 import { env } from '../config/env.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { authLimiter, signupLimiter } from '../middleware/rateLimit.js';
+import {
+  sendVerificationEmail,
+  sendWelcomeEmail,
+  sendLoginAlertEmail,
+} from '../lib/mailer.js';
 
 const router = Router();
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^[+\d][\d\s-]{6,17}$/;
+const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 function serializeUser(user) {
   return {
@@ -19,9 +26,26 @@ function serializeUser(user) {
     email: user.email,
     phone: user.phone,
     activationStatus: user.activationStatus,
+    emailVerified: Boolean(user.emailVerifiedAt),
     referralCode: user.referralCode,
     createdAt: user.createdAt,
   };
+}
+
+function newVerificationToken() {
+  return randomBytes(32).toString('hex');
+}
+
+async function issueVerificationToken(email) {
+  const token = newVerificationToken();
+  await prisma.user.update({
+    where: { email },
+    data: {
+      verificationToken: token,
+      verificationTokenExpiry: new Date(Date.now() + VERIFY_TOKEN_TTL_MS),
+    },
+  });
+  return token;
 }
 
 router.post(
@@ -89,6 +113,14 @@ router.post(
     });
 
     const tokens = issueTokenPair(user.id);
+
+    try {
+      const token = await issueVerificationToken(normalizedEmail);
+      await sendVerificationEmail({ to: normalizedEmail, name, token });
+    } catch (err) {
+      console.error('[auth] failed to issue/send verification email:', err.message);
+    }
+
     res.status(201).json({ message: 'Signup successful', user: serializeUser(user), ...tokens });
   }),
 );
@@ -118,8 +150,71 @@ router.post(
       data: { userId: user.id, action: 'USER_LOGIN', metadata: { email: user.email } },
     });
 
+    sendLoginAlertEmail({
+      to: user.email,
+      name: user.fullName,
+      at: new Date().toISOString(),
+      ip: req.ip,
+    });
+
     const tokens = issueTokenPair(user.id);
     res.json({ user: serializeUser(user), ...tokens });
+  }),
+);
+
+router.post(
+  '/verify-email',
+  asyncHandler(async (req, res) => {
+    const { token } = req.body ?? {};
+    if (typeof token !== 'string' || !token) {
+      throw new AppError('Verification token is required', 400);
+    }
+
+    const user = await prisma.user.findUnique({ where: { verificationToken: token } });
+    if (!user || (user.verificationTokenExpiry && user.verificationTokenExpiry < new Date())) {
+      throw new AppError('Invalid or expired verification link', 400);
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerifiedAt: new Date(),
+        verificationToken: null,
+        verificationTokenExpiry: null,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: { userId: user.id, action: 'EMAIL_VERIFIED', metadata: { email: user.email } },
+    });
+
+    sendWelcomeEmail({ to: user.email, name: user.fullName });
+
+    res.json({ message: 'Email verified successfully' });
+  }),
+);
+
+router.post(
+  '/resend-verification',
+  asyncHandler(async (req, res) => {
+    const { email } = req.body ?? {};
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!normalizedEmail || !EMAIL_REGEX.test(normalizedEmail)) {
+      throw new AppError('Enter a valid email address', 400);
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) {
+      return res.json({ message: 'If the account exists, a verification email has been sent' });
+    }
+    if (user.emailVerifiedAt) {
+      return res.json({ message: 'This account is already verified' });
+    }
+
+    const token = await issueVerificationToken(user.email);
+    sendVerificationEmail({ to: user.email, name: user.fullName, token });
+
+    res.json({ message: 'Verification email sent' });
   }),
 );
 

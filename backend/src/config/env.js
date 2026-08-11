@@ -13,6 +13,12 @@ export const env = {
   jwtAccessExpiry: '15m',
   jwtRefreshExpiry: '7d',
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY,
+  resendApiKey: process.env.RESEND_API_KEY,
+  mailFrom: process.env.MAIL_FROM ?? 'LaaniPay <onboarding@resend.dev>',
+  mailReplyTo: process.env.MAIL_REPLY_TO,
+  frontendUrl:
+    process.env.FRONTEND_URL ??
+    (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').split(',')[0].trim(),
   clientOrigins: (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
     .split(',')
     .map((origin) => origin.trim()),

@@ -17,9 +17,12 @@ model User {
   email            String   @unique
   phone            String
   passwordHash     String   @map("password_hash")
-  activationStatus Boolean  @default(false) @map("activation_status")
-  referralCode     String   @unique @default(cuid()) @map("referral_code")
-  createdAt        DateTime @default(now()) @map("created_at")
+  activationStatus         Boolean   @default(false) @map("activation_status")
+  referralCode             String    @unique @default(cuid()) @map("referral_code")
+  emailVerifiedAt          DateTime? @map("email_verified_at")
+  verificationToken        String?   @unique @map("verification_token")
+  verificationTokenExpiry  DateTime? @map("verification_token_expiry")
+  createdAt                DateTime  @default(now()) @map("created_at")
 
   wallet                   Wallet?
   activationPayments       ActivationPayment[]

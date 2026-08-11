@@ -16,6 +16,9 @@ router.post(
     if (req.user.activationStatus) {
       throw new AppError('Account is already activated', 409);
     }
+    if (!req.user.emailVerifiedAt) {
+      throw new AppError('Please verify your email address before activating your account', 403);
+    }
 
     const existing = await prisma.activationPayment.findFirst({
       where: { userId: req.userId, status: 'pending' },

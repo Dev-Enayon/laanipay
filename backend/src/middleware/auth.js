@@ -22,6 +22,7 @@ export async function requireAuth(req, res, next) {
       email: true,
       activationStatus: true,
       referralCode: true,
+      emailVerifiedAt: true,
     },
   });
 

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
+import { ShieldCheck, CreditCard, CheckCircle2, Loader2, MailCheck } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira } from '../lib/format.js';
 import { payWithPaystack } from '../lib/paystack.js';
@@ -16,6 +16,31 @@ export default function Activate() {
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
+
+  // Pick up an email verification done in another tab.
+  useEffect(() => {
+    if (!user?.emailVerified) refreshUser().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleResend = async () => {
+    setResending(true);
+    setResendMsg('');
+    try {
+      const data = await api('/auth/resend-verification', {
+        method: 'POST',
+        body: { email: user.email },
+      });
+      setResendMsg(data?.message ?? 'Verification email sent');
+      refreshUser().catch(() => {});
+    } catch (err) {
+      setResendMsg(err.message ?? 'Could not resend verification email');
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handlePay = async () => {
     setError('');
@@ -80,6 +105,27 @@ export default function Activate() {
             <p className="mt-2 text-xs text-white/40">One-time payment · Paystack secured</p>
           </div>
 
+          {!user?.emailVerified && (
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+              <div className="flex items-center gap-2 font-medium">
+                <MailCheck className="h-4 w-4" />
+                Verify your email to activate your account
+              </div>
+              <p className="mt-1 text-xs text-amber-200/70">
+                Check your inbox for the verification link we sent to {user?.email}.
+              </p>
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resending}
+                className="mt-2 text-xs font-semibold text-amber-300 underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                {resending ? 'Sending...' : 'Resend verification email'}
+              </button>
+              {resendMsg && <p className="mt-1 text-xs text-amber-200/80">{resendMsg}</p>}
+            </div>
+          )}
+
           {verified && (
             <div className="mt-5 flex items-center gap-2 rounded-xl bg-neon/10 px-4 py-3 text-sm font-medium text-neon">
               <CheckCircle2 className="h-5 w-5" />
@@ -100,8 +146,16 @@ export default function Activate() {
             </div>
           )}
 
-          <button onClick={handlePay} disabled={busy || verified} className="btn-neon mt-8 w-full">
-            {busy ? 'Opening secure checkout...' : 'Pay activation fee'}
+          <button
+            onClick={handlePay}
+            disabled={busy || verified || !user?.emailVerified}
+            className="btn-neon mt-8 w-full"
+          >
+            {busy
+              ? 'Opening secure checkout...'
+              : user?.emailVerified
+                ? 'Pay activation fee'
+                : 'Verify your email to continue'}
           </button>
 
           <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-white/40">

@@ -39,17 +39,20 @@ export function bonusForLevel(level, isPro = false) {
 // activated upline (up to MLM_LEVELS deep) with the level bonus and
 // recording the earned row in mlm_referrals.
 // `tx` is a Prisma transaction client.
+// Returns { credited, rankChanges } where each entry carries the recipient
+// email/name so the caller can fire notification emails after commit.
 export async function creditActivationBonuses(activatedUserId, tx) {
   const placement = await tx.mlmReferral.findFirst({
     where: { userId: activatedUserId, level: 1 },
     include: { referrer: true },
   });
 
-  if (!placement?.referrerId) return;
+  if (!placement?.referrerId) return { credited: [], rankChanges: [] };
 
   let uplineId = placement.referrerId;
   let level = 1;
   let credited = [];
+  let rankChanges = [];
 
   while (uplineId && level <= MLM_LEVELS) {
     const upline = await tx.user.findUnique({ where: { id: uplineId } });
@@ -79,11 +82,25 @@ export async function creditActivationBonuses(activatedUserId, tx) {
           where: { userId: upline.id },
           data: { balance: { increment: bonus } },
         });
-        credited.push({ userId: upline.id, level, bonus });
+        credited.push({
+          userId: upline.id,
+          email: upline.email,
+          name: upline.fullName,
+          level,
+          bonus,
+        });
       }
 
       if (level === 1) {
-        await recordRankFor(tx, upline.id);
+        const rankResult = await recordRankFor(tx, upline.id);
+        if (rankResult.changed) {
+          rankChanges.push({
+            userId: upline.id,
+            email: upline.email,
+            name: upline.fullName,
+            rank: rankResult.rank.key,
+          });
+        }
       }
     }
 
@@ -94,7 +111,7 @@ export async function creditActivationBonuses(activatedUserId, tx) {
     level += 1;
   }
 
-  return credited;
+  return { credited, rankChanges };
 }
 
 export async function recordRankFor(tx, userId) {
@@ -108,9 +125,11 @@ export async function recordRankFor(tx, userId) {
     orderBy: { achievedAt: 'desc' },
   });
 
+  let changed = false;
   if (!latest || RANKS.findIndex((r) => r.key === rank.key) > RANKS.findIndex((r) => r.key === latest.rank)) {
     await tx.mlmRank.create({ data: { userId, rank: rank.key } });
+    changed = true;
   }
 
-  return rank;
+  return { rank, changed };
 }

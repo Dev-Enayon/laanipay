@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth, requireActivated } from '../middleware/auth.js';
 import { paymentLimiter } from '../middleware/rateLimit.js';
+import { sendContributionSubscribedEmail } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -64,6 +65,14 @@ router.post(
         action: 'CONTRIBUTION_SUBSCRIBED',
         metadata: { planId: plan.id, planName: plan.name, monthlyAmount: plan.monthlyAmount },
       },
+    });
+
+    sendContributionSubscribedEmail({
+      to: req.user.email,
+      name: req.user.fullName,
+      planName: plan.name,
+      monthlyAmount: plan.monthlyAmount,
+      nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
     });
 
     res.status(201).json({ subscription: serializeSubscription(subscription) });

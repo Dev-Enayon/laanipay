@@ -12,6 +12,7 @@ import Landing from './pages/Landing.jsx';
 
 const Signup = lazy(() => import('./pages/Signup.jsx'));
 const Login = lazy(() => import('./pages/Login.jsx'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail.jsx'));
 const Activate = lazy(() => import('./pages/Activate.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Mlm = lazy(() => import('./pages/Mlm.jsx'));
@@ -41,6 +42,7 @@ export default function App() {
                 </GuestRoute>
               }
             />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route
               path="/activate"
               element={
