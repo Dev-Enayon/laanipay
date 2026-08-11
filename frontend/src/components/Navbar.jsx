@@ -95,8 +95,8 @@ export default function Navbar() {
     >
       <nav className="container-lp flex h-16 items-center justify-between">
         <Link to="/" className="flex items-center gap-2" onClick={() => setOpen(false)}>
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-neon text-lg font-extrabold text-ink">
-            L
+          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl">
+            <img src="/logo.jpeg" alt="LaaniPay" className="h-full w-full object-cover" />
           </span>
           <span className={`text-lg font-bold ${onDark ? 'text-white' : 'text-slate-900'}`}>
             LaaniPay

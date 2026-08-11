@@ -7,8 +7,8 @@ export default function Footer() {
       <div className="container-lp grid gap-10 py-14 md:grid-cols-4">
         <div className="md:col-span-2">
           <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-neon text-lg font-extrabold text-ink">
-              L
+            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl">
+              <img src="/logo.jpeg" alt="LaaniPay" className="h-full w-full object-cover" />
             </span>
             <span className="text-lg font-bold text-white">LaaniPay</span>
           </div>
