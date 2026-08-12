@@ -10,22 +10,24 @@ export function FullScreenLoader() {
 }
 
 // Protected pages (/dashboard, /mlm, /contribution):
-// requires login AND activation.
+// requires login AND activation. Admins are routed to their dashboard.
 export function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
   if (loading) return <FullScreenLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
   if (!user.activationStatus) return <Navigate to="/activate" replace />;
   return children;
 }
 
-// /activate: requires login, but redirects to /dashboard once activated.
+// /activate: requires login, but redirects once activated.
 export function ActivateRoute({ children }) {
   const { user, loading } = useAuth();
 
   if (loading) return <FullScreenLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
   if (user.activationStatus) return <Navigate to="/dashboard" replace />;
   return children;
 }
@@ -35,7 +37,7 @@ export function GuestRoute({ children }) {
   const { user, loading } = useAuth();
 
   if (loading) return <FullScreenLoader />;
-  if (user) return <Navigate to={user.activationStatus ? '/dashboard' : '/activate'} replace />;
+  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : user.activationStatus ? '/dashboard' : '/activate'} replace />;
   return children;
 }
 

@@ -67,7 +67,11 @@ export default function Navbar() {
     </>
   );
 
-  const activeLinks = (
+  const activeLinks = user?.role === 'admin' ? (
+    <NavLink to="/admin" className={navClass}>
+      Admin Dashboard
+    </NavLink>
+  ) : (
     <>
       <NavLink to="/dashboard" className={navClass}>
         Dashboard
@@ -81,11 +85,6 @@ export default function Navbar() {
       <NavLink to="/contribution" className={navClass}>
         Contribution
       </NavLink>
-      {user?.role === 'admin' && (
-        <NavLink to="/admin" className={navClass}>
-          Admin
-        </NavLink>
-      )}
     </>
   );
 
@@ -149,21 +148,27 @@ export default function Navbar() {
             <a href="/#about" onClick={() => setOpen(false)} className="py-2 text-sm font-medium text-slate-700">
               About
             </a>
-            {user?.activationStatus && (
-              <>
-                <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                  <LayoutDashboard className="h-4 w-4" /> Dashboard
-                </Link>
-                <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                  <Wallet className="h-4 w-4" /> Wallet
-                </Link>
-                <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                  <Network className="h-4 w-4" /> MLM Platform
-                </Link>
-                <Link to="/contribution" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                  <PiggyBank className="h-4 w-4" /> Contribution
-                </Link>
-              </>
+            {user?.role === 'admin' ? (
+              <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                <ShieldCheck className="h-4 w-4" /> Admin Dashboard
+              </Link>
+            ) : (
+              user?.activationStatus && (
+                <>
+                  <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                    <LayoutDashboard className="h-4 w-4" /> Dashboard
+                  </Link>
+                  <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                    <Wallet className="h-4 w-4" /> Wallet
+                  </Link>
+                  <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                    <Network className="h-4 w-4" /> MLM Platform
+                  </Link>
+                  <Link to="/contribution" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                    <PiggyBank className="h-4 w-4" /> Contribution
+                  </Link>
+                </>
+              )
             )}
             {user && !user.activationStatus && (
               <Link to="/activate" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
@@ -182,11 +187,6 @@ export default function Navbar() {
                 className="mt-2 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white"
               >
                 Sign Up
-              </Link>
-            )}
-            {user?.role === 'admin' && (
-              <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                <ShieldCheck className="h-4 w-4" /> Admin Dashboard
               </Link>
             )}
             {user && (

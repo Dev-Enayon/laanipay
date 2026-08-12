@@ -19,7 +19,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       const user = await login(email, password);
-      navigate(user.activationStatus ? '/dashboard' : '/activate', { replace: true });
+      if (user.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate(user.activationStatus ? '/dashboard' : '/activate', { replace: true });
+      }
     } catch (err) {
       setError(err.message ?? 'Login failed. Please try again.');
     } finally {
