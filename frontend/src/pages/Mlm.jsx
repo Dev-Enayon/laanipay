@@ -152,54 +152,70 @@ export default function Mlm() {
 
           <div className="mt-6 grid gap-6 md:grid-cols-2">
             <Reveal>
-              <GlassCard>
-                <div className="mb-4 flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-neon" />
-                  <h3 className="text-lg font-bold text-white">Basic Plan</h3>
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-ink p-6 text-white">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-slate-500/20 blur-3xl" />
+                <div className="relative mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-500/20">
+                    <Crown className="h-4 w-4 text-slate-300" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Basic Plan</h3>
+                  <span className="ml-auto rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white/50">
+                    All members
+                  </span>
                 </div>
-                <ul className="space-y-2 text-sm text-white/70">
-                  <li>Earn on 3 levels of your activation tree:</li>
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 1</span><span className="font-bold text-neon">₦500</span>
+                <p className="relative text-xs text-white/40">Earn on 3 levels of your activation tree:</p>
+                <ul className="relative mt-3 space-y-2 text-sm">
+                  <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 1</span>
+                    <span className="font-display text-base font-bold text-slate-100">₦500</span>
                   </li>
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 2</span><span className="font-bold text-neon">₦200</span>
+                  <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 2</span>
+                    <span className="font-display text-base font-bold text-slate-100">₦200</span>
                   </li>
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 3</span><span className="font-bold text-neon">₦100</span>
-                  </li>
-                  <li className="pt-2 text-xs text-white/40">
-                    Bonus is paid when each downline activates their account.
+                  <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 3</span>
+                    <span className="font-display text-base font-bold text-slate-100">₦100</span>
                   </li>
                 </ul>
-              </GlassCard>
+                <p className="relative mt-3 text-[11px] text-white/40">
+                  Bonus is paid when each downline activates their account.
+                </p>
+              </div>
             </Reveal>
 
             <Reveal delay={120}>
-              <GlassCard glow="neon">
-                <div className="mb-4 flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-neon" />
-                  <h3 className="text-lg font-bold text-white">Pro Plan</h3>
-                  <span className="rounded-full bg-neon/15 px-3 py-1 text-xs font-bold text-neon">
+              <div className="relative overflow-hidden rounded-2xl border border-yellow-400/30 bg-gradient-to-br from-slate-900 via-ink to-amber-950/30 p-6 text-white shadow-[0_0_24px_rgba(250,204,21,0.15)]">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-yellow-400/20 blur-3xl" />
+                <div className="relative mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-400/15">
+                    <Crown className="h-4 w-4 text-yellow-300" />
+                  </span>
+                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Pro Plan</h3>
+                  <span className="ml-auto rounded-full bg-gradient-to-r from-yellow-200 to-amber-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-ink">
                     Director+
                   </span>
                 </div>
-                <p className="mb-4 text-sm text-white/60">
-                  Unlocked automatically at <span className="font-semibold text-white">Director</span>{' '}
-                  rank (15 direct referrals). All bonuses boosted by 30%.
+                <p className="relative text-xs text-white/50">
+                  Unlocked automatically at{' '}
+                  <span className="font-semibold text-yellow-300">Director</span> rank (15 direct
+                  referrals). All bonuses boosted by 30%.
                 </p>
-                <ul className="space-y-2 text-sm text-white/70">
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 1</span><span className="font-bold text-neon">₦650</span>
+                <ul className="relative mt-3 space-y-2 text-sm">
+                  <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 1</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦650</span>
                   </li>
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 2</span><span className="font-bold text-neon">₦260</span>
+                  <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 2</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦260</span>
                   </li>
-                  <li className="flex justify-between rounded-xl bg-white/5 px-4 py-2">
-                    <span>Level 3</span><span className="font-bold text-neon">₦130</span>
+                  <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 3</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦130</span>
                   </li>
                 </ul>
-              </GlassCard>
+              </div>
             </Reveal>
           </div>
 
