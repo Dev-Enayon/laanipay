@@ -12,6 +12,7 @@ export default {
       },
       fontFamily: {
         sans: ['Poppins', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'Poppins', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
         neon: '0 0 24px rgba(0, 255, 136, 0.35)',

@@ -21,6 +21,34 @@ const RANK_LABELS = {
   diamond_director: 'Diamond Director',
 };
 
+const RANK_STYLE = {
+  marketer: {
+    gem: 'from-slate-200 to-slate-500 shadow-[0_0_14px_rgba(148,163,184,0.5)]',
+    text: 'text-slate-100',
+    chip: 'border-slate-400/30 text-slate-300',
+  },
+  manager: {
+    gem: 'from-amber-200 to-amber-600 shadow-[0_0_14px_rgba(245,158,11,0.5)]',
+    text: 'text-amber-200',
+    chip: 'border-amber-400/30 text-amber-300',
+  },
+  director: {
+    gem: 'from-yellow-100 to-yellow-500 shadow-[0_0_14px_rgba(250,204,21,0.55)]',
+    text: 'text-yellow-300',
+    chip: 'border-yellow-400/30 text-yellow-200',
+  },
+  ruby_director: {
+    gem: 'from-rose-300 to-rose-600 shadow-[0_0_14px_rgba(244,63,94,0.55)]',
+    text: 'text-rose-300',
+    chip: 'border-rose-400/30 text-rose-300',
+  },
+  diamond_director: {
+    gem: 'from-cyan-200 to-sky-500 shadow-[0_0_14px_rgba(103,232,249,0.55)]',
+    text: 'text-cyan-200',
+    chip: 'border-cyan-300/30 text-cyan-200',
+  },
+};
+
 export default function Mlm() {
   const [overview, setOverview] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -35,6 +63,10 @@ export default function Mlm() {
   const referralLink = overview
     ? `${window.location.origin}/signup?ref=${overview.referralCode}`
     : '';
+
+  const currentIndex = overview
+    ? RANK_LADDER.findIndex((r) => r.key === overview.currentRank)
+    : -1;
 
   const copyLink = async () => {
     try {
@@ -67,17 +99,35 @@ export default function Mlm() {
         <>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Award, label: 'Current rank', value: RANK_LABELS[overview.currentRank] ?? overview.currentRank, accent: 'text-neon' },
-              { icon: Users, label: 'Direct referrals', value: overview.directCount, accent: 'text-primary' },
-              { icon: Network, label: 'Total downline', value: overview.totalDownline, accent: 'text-primary' },
-              { icon: Wallet, label: 'Bonuses earned', value: naira(overview.totalBonusEarned), accent: 'text-emerald-600' },
+              { icon: Award, label: 'Current rank', value: RANK_LABELS[overview.currentRank] ?? overview.currentRank, accent: 'text-neon', rank: true },
+              { icon: Users, label: 'Direct referrals', value: overview.directCount, accent: 'text-sky-400', rank: false },
+              { icon: Network, label: 'Total downline', value: overview.totalDownline, accent: 'text-violet-400', rank: false },
+              { icon: Wallet, label: 'Bonuses earned', value: naira(overview.totalBonusEarned), accent: 'text-emerald-400', rank: false },
             ].map((stat) => (
-              <div key={stat.label} className="card-light p-6">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+              <div
+                key={stat.label}
+                className={`relative overflow-hidden rounded-2xl border p-6 text-white transition-all ${
+                  stat.rank
+                    ? 'border-neon/40 bg-gradient-to-br from-slate-900 via-ink to-emerald-950/40 shadow-neon'
+                    : 'border-white/10 bg-gradient-to-br from-slate-900 to-ink'
+                }`}
+              >
+                <div
+                  className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl ${
+                    stat.rank ? 'bg-neon/25' : 'bg-primary/25'
+                  }`}
+                />
+                <div className="relative flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-white/50">
                   <stat.icon className={`h-4 w-4 ${stat.accent}`} />
                   {stat.label}
                 </div>
-                <p className="mt-2 text-2xl font-extrabold text-slate-900">{stat.value}</p>
+                <p
+                  className={`relative mt-2 font-display text-2xl font-bold tracking-tight ${
+                    stat.rank ? 'bg-gradient-to-r from-neon to-emerald-300 bg-clip-text text-transparent' : 'text-white'
+                  }`}
+                >
+                  {stat.value}
+                </p>
               </div>
             ))}
           </div>
@@ -154,44 +204,72 @@ export default function Mlm() {
           </div>
 
           <Reveal>
-            <div className="mt-6 rounded-2xl border border-slate-100 bg-white p-6">
-              <div className="flex items-center gap-2">
-                <Award className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-bold text-slate-900">Rank ladder</h3>
+            <div className="relative mt-6 overflow-hidden rounded-2xl bg-ink p-6 text-white md:p-8">
+              <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-neon/10 blur-3xl" />
+
+              <div className="relative flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-neon/15">
+                  <Award className="h-4 w-4 text-neon" />
+                </span>
+                <h3 className="font-display text-xl font-bold tracking-tight text-white">Rank ladder</h3>
+                <span className="ml-auto rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white/60">
+                  {currentIndex + 1}/{RANK_LADDER.length} unlocked
+                </span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-2 text-xs text-white/40">
                 Based on direct activated referrals
                 {overview.rankAchievedAt
                   ? ` · Current rank achieved ${formatDate(overview.rankAchievedAt)}`
                   : ''}
               </p>
-              <div className="mt-5 flex flex-col gap-3">
+
+              <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary via-neon to-neon transition-all duration-700"
+                  style={{ width: `${((currentIndex + 1) / RANK_LADDER.length) * 100}%` }}
+                />
+              </div>
+
+              <div className="relative mt-6 flex flex-col gap-3">
                 {RANK_LADDER.map((rank, index) => {
                   const isCurrent = rank.key === overview.currentRank;
-                  const achieved = index <= RANK_LADDER.findIndex((r) => r.key === overview.currentRank);
+                  const achieved = index <= currentIndex;
+                  const tier = RANK_STYLE[rank.key];
                   return (
                     <div
                       key={rank.key}
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition-all ${
+                      className={`flex items-center justify-between rounded-xl border px-4 py-3.5 transition-all ${
                         isCurrent
-                          ? 'border-primary bg-primary/5 shadow-glow'
+                          ? 'border-neon/40 bg-white/10 shadow-neon'
                           : achieved
-                            ? 'border-emerald-200 bg-emerald-50/60'
-                            : 'border-slate-200 bg-white'
+                            ? 'border-white/10 bg-white/5'
+                            : 'border-white/5 bg-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className={`h-2.5 w-2.5 rounded-full ${achieved ? 'bg-neon' : 'bg-slate-300'}`} />
-                        <span className={isCurrent ? 'font-bold text-primary' : 'font-medium text-slate-700'}>
-                          {rank.label}
+                        <span
+                          className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br ${
+                            tier.gem
+                          } ${achieved ? '' : 'opacity-30 grayscale'}`}
+                        >
+                          <Award className="h-4 w-4 text-ink" />
                         </span>
+                        <div>
+                          <p className={`font-display text-base font-semibold tracking-tight ${achieved ? tier.text : 'text-white/35'}`}>
+                            {rank.label}
+                          </p>
+                          <p className="text-[11px] text-white/40">{rank.minDirect}+ direct activated</p>
+                        </div>
                         {isCurrent && (
-                          <span className="rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-white">
+                          <span className="rounded-full bg-neon px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink">
                             Current
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-slate-400">{rank.minDirect}+ direct</span>
+                      <span className={`text-xs font-semibold ${achieved ? `rounded-full border px-2.5 py-1 ${tier.chip}` : 'text-white/25'}`}>
+                        {rank.minDirect}+ direct
+                      </span>
                     </div>
                   );
                 })}
