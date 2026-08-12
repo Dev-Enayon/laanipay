@@ -55,6 +55,8 @@ async function main() {
           passwordHash,
           activationStatus: true,
           emailVerifiedAt: new Date(),
+          role: 'admin',
+          status: 'active',
         },
       });
       await tx.wallet.create({ data: { userId: user.id } });
@@ -68,7 +70,11 @@ async function main() {
   } else {
     await prisma.user.update({
       where: { id: existing.id },
-      data: { emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
+      data: {
+        role: 'admin',
+        status: 'active',
+        emailVerifiedAt: existing.emailVerifiedAt ?? new Date(),
+      },
     });
     console.log(`Admin account already exists: ${existing.email}`);
   }

@@ -38,3 +38,13 @@ export function GuestRoute({ children }) {
   if (user) return <Navigate to={user.activationStatus ? '/dashboard' : '/activate'} replace />;
   return children;
 }
+
+// Admin pages: requires an authenticated administrator.
+export function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <FullScreenLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  return children;
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const linkClass = ({ isActive }) =>
@@ -81,6 +81,11 @@ export default function Navbar() {
       <NavLink to="/contribution" className={navClass}>
         Contribution
       </NavLink>
+      {user?.role === 'admin' && (
+        <NavLink to="/admin" className={navClass}>
+          Admin
+        </NavLink>
+      )}
     </>
   );
 
@@ -177,6 +182,11 @@ export default function Navbar() {
                 className="mt-2 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white"
               >
                 Sign Up
+              </Link>
+            )}
+            {user?.role === 'admin' && (
+              <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                <ShieldCheck className="h-4 w-4" /> Admin Dashboard
               </Link>
             )}
             {user && (

@@ -134,9 +134,21 @@ export async function settlePayment({ reference, expectedUserId }) {
           where: { id: contribution.subscriptionId },
           data: { nextPaymentDate },
         });
-        await tx.wallet.update({
+        const wallet = await tx.wallet.update({
           where: { userId: contribution.subscription.userId },
           data: { totalContributed: { increment: contribution.amount } },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            userId: contribution.subscription.userId,
+            type: 'contribution',
+            amount: contribution.amount,
+            balanceAfter: wallet.balance,
+            status: 'completed',
+            reference: contribution.paystackReference,
+            description: `Monthly contribution — ${contribution.subscription.plan?.name ?? 'Contribution plan'}`,
+            metadata: { planId: contribution.subscription.planId },
+          },
         });
         await tx.auditLog.create({
           data: {

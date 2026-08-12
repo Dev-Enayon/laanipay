@@ -25,6 +25,8 @@ function serializeUser(user) {
     fullName: user.fullName,
     email: user.email,
     phone: user.phone,
+    role: user.role,
+    status: user.status,
     activationStatus: user.activationStatus,
     emailVerified: Boolean(user.emailVerifiedAt),
     referralCode: user.referralCode,
@@ -141,6 +143,10 @@ router.post(
       throw new AppError('Invalid email or password', 401);
     }
 
+    if (user.status === 'suspended') {
+      throw new AppError('Your account has been suspended. Contact support.', 403);
+    }
+
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) {
       throw new AppError('Invalid email or password', 401);
@@ -149,6 +155,10 @@ router.post(
     await prisma.auditLog.create({
       data: { userId: user.id, action: 'USER_LOGIN', metadata: { email: user.email } },
     });
+
+    prisma.user
+      .update({ where: { id: user.id }, data: { lastActivityAt: new Date() } })
+      .catch(() => {});
 
     sendLoginAlertEmail({
       to: user.email,

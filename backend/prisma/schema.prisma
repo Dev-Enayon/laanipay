@@ -22,6 +22,14 @@ model User {
   emailVerifiedAt          DateTime? @map("email_verified_at")
   verificationToken        String?   @unique @map("verification_token")
   verificationTokenExpiry  DateTime? @map("verification_token_expiry")
+  role                     String    @default("user")
+  status                   String    @default("active")
+  suspendedAt              DateTime? @map("suspended_at")
+  suspendedBy              String?   @map("suspended_by")
+  suspendedReason          String?   @map("suspended_reason")
+  reactivatedAt            DateTime? @map("reactivated_at")
+  reactivatedBy            String?   @map("reactivated_by")
+  lastActivityAt           DateTime? @map("last_activity_at")
   createdAt                DateTime  @default(now()) @map("created_at")
 
   wallet                   Wallet?
@@ -30,8 +38,13 @@ model User {
   placement                MlmReferral[] @relation("ReferredUser")
   mlmRanks                 MlmRank[]
   contributionSubscriptions ContributionSubscription[]
-  auditLogs                AuditLog[]
+  auditLogs                AuditLog[] @relation("UserLogs")
+  adminLogs                AuditLog[] @relation("AdminActions")
+  targetLogs               AuditLog[] @relation("TargetedUser")
+  walletTransactions       WalletTransaction[]
+  companyLedger            CompanyLedger[]
 
+  @@index([status])
   @@map("users")
 }
 
@@ -134,14 +147,58 @@ model ContributionPayment {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  userId    String?  @map("user_id")
-  action    String
-  metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  adminId      String?  @map("admin_id")
+  targetUserId String?  @map("target_user_id")
+  action       String
+  reason       String?
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user       User? @relation("UserLogs", fields: [userId], references: [id], onDelete: SetNull)
+  adminUser  User? @relation("AdminActions", fields: [adminId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("TargetedUser", fields: [targetUserId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([adminId])
+  @@index([targetUserId])
   @@map("audit_logs")
+}
+
+// Wallet ledger — every credit/debit against a user's wallet (contributions,
+// MLM bonuses, manual admin deposits/withdrawals/adjustments).
+model WalletTransaction {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  type         String
+  amount       Int
+  balanceAfter Int      @default(0) @map("balance_after")
+  status       String   @default("completed")
+  reference    String?
+  description  String?
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+// Company ledger — recorded platform expenses and revenue adjustments.
+// Used with activation fees and MLM bonuses to compute true company profit.
+model CompanyLedger {
+  id          String   @id @default(cuid())
+  type        String
+  amount      Int
+  description String?
+  adminId     String?  @map("admin_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  admin User? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("company_ledger")
 }

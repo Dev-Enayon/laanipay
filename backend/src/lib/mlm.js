@@ -82,6 +82,21 @@ export async function creditActivationBonuses(activatedUserId, tx) {
           where: { userId: upline.id },
           data: { balance: { increment: bonus } },
         });
+        const walletAfter = await tx.wallet.findUnique({
+          where: { userId: upline.id },
+          select: { balance: true },
+        });
+        await tx.walletTransaction.create({
+          data: {
+            userId: upline.id,
+            type: 'bonus',
+            amount: bonus,
+            balanceAfter: walletAfter?.balance ?? bonus,
+            status: 'completed',
+            description: `Level ${level} referral bonus`,
+            metadata: { sourceUserId: activatedUserId, level },
+          },
+        });
         credited.push({
           userId: upline.id,
           email: upline.email,
