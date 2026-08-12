@@ -38,8 +38,8 @@ export default function AdminAudit() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-slate-900">
-          Admin activity log <span className="text-sm font-medium text-slate-400">({data?.total ?? '…'})</span>
+        <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">
+          Admin activity log <span className="text-sm font-semibold text-slate-500">({data?.total ?? '…'})</span>
         </h2>
         <select value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} className="input max-w-xs">
           <option value="">All actions</option>
@@ -51,7 +51,7 @@ export default function AdminAudit() {
         </select>
       </div>
 
-      {error && <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
+      {error && <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}
 
       {!data && !error && (
         <div className="flex min-h-[40vh] items-center justify-center">
@@ -60,49 +60,49 @@ export default function AdminAudit() {
       )}
 
       {data && (
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-card">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Admin</th>
-                <th className="px-4 py-3">Target user</th>
-                <th className="px-4 py-3">Reason / details</th>
-                <th className="px-4 py-3">Timestamp</th>
+              <tr className="bg-gradient-to-r from-primary-dark to-primary text-xs uppercase tracking-wider text-white">
+                <th className="px-4 py-4 font-bold">Action</th>
+                <th className="px-4 py-4 font-bold">Admin</th>
+                <th className="px-4 py-4 font-bold">Target user</th>
+                <th className="px-4 py-4 font-bold">Reason / details</th>
+                <th className="px-4 py-4 font-bold">Timestamp</th>
               </tr>
             </thead>
             <tbody>
               {data.logs.map((log) => (
-                <tr key={log.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <span className="font-semibold capitalize text-slate-800">
+                <tr key={log.id} className="border-b border-slate-100 last:border-0 transition-colors hover:bg-blue-50/50">
+                  <td className="px-4 py-3.5">
+                    <span className="font-bold capitalize text-slate-800">
                       {ACTION_LABELS[log.action] ?? log.action.replace(/_/g, ' ')}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3.5 text-slate-600">
                     {log.admin ? (
                       <div>
-                        <p className="font-medium text-slate-700">{log.admin.fullName}</p>
-                        <p className="text-xs text-slate-400">{log.admin.email}</p>
+                        <p className="font-bold text-slate-700">{log.admin.fullName}</p>
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">{log.admin.email}</p>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">System / user</span>
+                      <span className="text-xs font-medium text-slate-500">System / user</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="px-4 py-3.5 text-slate-600">
                     {log.target ? (
                       <div>
-                        <p className="font-medium text-slate-700">{log.target.fullName}</p>
-                        <p className="text-xs text-slate-400">{log.target.email}</p>
+                        <p className="font-bold text-slate-700">{log.target.fullName}</p>
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">{log.target.email}</p>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-sm text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
+                  <td className="px-4 py-3.5 text-xs font-medium text-slate-600">
                     {log.reason ?? (log.metadata ? JSON.stringify(log.metadata).slice(0, 80) : '—')}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{formatDateTime(log.createdAt)}</td>
+                  <td className="px-4 py-3.5 text-xs font-medium text-slate-600">{formatDateTime(log.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
@@ -112,21 +112,21 @@ export default function AdminAudit() {
 
       {data && (
         <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs text-slate-400">
+          <p className="text-sm font-medium text-slate-500">
             Page {data.page} of {totalPages} · {data.total} entries
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" /> Prev
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>

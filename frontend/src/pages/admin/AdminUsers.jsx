@@ -72,12 +72,12 @@ export default function AdminUsers() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-slate-900">
-          Users <span className="text-sm font-medium text-slate-400">({data?.total ?? '…'})</span>
+        <h2 className="font-display text-xl font-bold tracking-tight text-slate-900">
+          Users <span className="text-sm font-semibold text-slate-500">({data?.total ?? '…'})</span>
         </h2>
       </div>
 
-      <div className="card-light mt-4 p-4">
+      <div className="mt-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-card">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -111,13 +111,16 @@ export default function AdminUsers() {
           </select>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          <span className="self-center text-xs font-bold uppercase tracking-wider text-slate-400">Sort by</span>
           {SORTS.map((s) => (
             <button
               key={s.key}
               onClick={() => changeSort(s.key)}
-              className={`rounded-lg border px-3 py-1.5 font-semibold transition-colors ${
-                sort === s.key ? 'border-primary bg-primary/5 text-primary' : 'border-slate-200 text-slate-500 hover:border-slate-300'
+              className={`rounded-xl border px-3.5 py-2 font-bold transition-colors ${
+                sort === s.key
+                  ? 'border-primary bg-primary/5 text-primary'
+                  : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
               }`}
             >
               {s.label} {sort === s.key ? (order === 'desc' ? '↓' : '↑') : ''}
@@ -126,7 +129,7 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      {error && <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-600">{error}</div>}
+      {error && <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}
 
       {!data && !error && (
         <div className="flex min-h-[40vh] items-center justify-center">
@@ -135,59 +138,59 @@ export default function AdminUsers() {
       )}
 
       {data && (
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white">
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-card">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Plan</th>
-                <th className="px-4 py-3">Wallet</th>
-                <th className="px-4 py-3">MLM</th>
-                <th className="px-4 py-3">Contributed</th>
-                <th className="px-4 py-3">Withdrawn</th>
-                <th className="px-4 py-3">Registered</th>
-                <th className="px-4 py-3">Last activity</th>
-                <th className="px-4 py-3" />
+              <tr className="bg-gradient-to-r from-primary-dark to-primary text-xs uppercase tracking-wider text-white">
+                <th className="px-4 py-4 font-bold">User</th>
+                <th className="px-4 py-4 font-bold">Status</th>
+                <th className="px-4 py-4 font-bold">Plan</th>
+                <th className="px-4 py-4 font-bold">Wallet</th>
+                <th className="px-4 py-4 font-bold">MLM</th>
+                <th className="px-4 py-4 font-bold">Contributed</th>
+                <th className="px-4 py-4 font-bold">Withdrawn</th>
+                <th className="px-4 py-4 font-bold">Registered</th>
+                <th className="px-4 py-4 font-bold">Last activity</th>
+                <th className="px-4 py-4 font-bold" />
               </tr>
             </thead>
             <tbody>
               {data.users.map((u) => (
-                <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-800">{u.fullName}</p>
-                    <p className="text-xs text-slate-400">{u.email}</p>
-                    <p className="text-xs text-slate-400">{u.phone}</p>
+                <tr key={u.id} className="border-b border-slate-100 last:border-0 transition-colors hover:bg-blue-50/50">
+                  <td className="px-4 py-3.5">
+                    <p className="font-bold text-slate-800">{u.fullName}</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">{u.email}</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">{u.phone}</p>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1">
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-col items-start gap-1.5">
                       <StatusBadge status={u.status} />
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-xs font-medium text-slate-500">
                         {u.activationStatus ? 'Activated' : 'Not activated'}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5">
                     {u.plan ? (
                       <div>
-                        <p className="font-medium text-slate-700">{u.plan.name}</p>
-                        <p className="text-xs text-slate-400">{naira(u.plan.monthlyAmount)}/mo</p>
+                        <p className="font-bold text-slate-700">{u.plan.name}</p>
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(u.plan.monthlyAmount)}/mo</p>
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-sm text-slate-400">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-slate-800">{naira(u.walletBalance)}</td>
-                  <td className="px-4 py-3">
-                    <p className="text-slate-700">Lvl {u.mlmLevel}</p>
-                    <p className="text-xs text-slate-400">{u.directReferrals} direct · {u.totalDownline} downline</p>
+                  <td className="px-4 py-3.5 font-display text-base font-bold text-slate-800">{naira(u.walletBalance)}</td>
+                  <td className="px-4 py-3.5">
+                    <p className="font-bold text-slate-700">Lvl {u.mlmLevel}</p>
+                    <p className="mt-0.5 text-xs font-medium text-slate-500">{u.directReferrals} direct · {u.totalDownline} downline</p>
                   </td>
-                  <td className="px-4 py-3 font-semibold text-emerald-600">{naira(u.totalContributed)}</td>
-                  <td className="px-4 py-3 text-slate-700">{naira(u.totalWithdrawn)}</td>
-                  <td className="px-4 py-3 text-slate-600">{formatDate(u.createdAt)}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{u.lastActivityAt ? formatDate(u.lastActivityAt) : '—'}</td>
-                  <td className="px-4 py-3">
-                    <Link to={`/admin/users/${u.id}`} className="text-xs font-semibold text-primary hover:underline">
+                  <td className="px-4 py-3.5 font-display text-base font-bold text-emerald-600">{naira(u.totalContributed)}</td>
+                  <td className="px-4 py-3.5 font-medium text-slate-700">{naira(u.totalWithdrawn)}</td>
+                  <td className="px-4 py-3.5 font-medium text-slate-600">{formatDate(u.createdAt)}</td>
+                  <td className="px-4 py-3.5 text-xs font-medium text-slate-500">{u.lastActivityAt ? formatDate(u.lastActivityAt) : '—'}</td>
+                  <td className="px-4 py-3.5">
+                    <Link to={`/admin/users/${u.id}`} className="inline-flex items-center rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary hover:text-white">
                       View →
                     </Link>
                   </td>
@@ -200,21 +203,21 @@ export default function AdminUsers() {
 
       {data && (
         <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs text-slate-400">
+          <p className="text-sm font-medium text-slate-500">
             Page {data.page} of {totalPages} · {data.total} users
           </p>
           <div className="flex gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" /> Prev
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary disabled:opacity-40"
             >
               Next <ChevronRight className="h-4 w-4" />
             </button>
