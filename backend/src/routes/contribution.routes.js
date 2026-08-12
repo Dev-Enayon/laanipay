@@ -79,6 +79,59 @@ router.post(
   }),
 );
 
+router.patch(
+  '/plan',
+  requireAuth,
+  requireActivated,
+  asyncHandler(async (req, res) => {
+    const { planId } = req.body ?? {};
+
+    if (typeof planId !== 'string' || !planId) {
+      throw new AppError('planId is required', 400);
+    }
+
+    const plan = await prisma.contributionPlan.findUnique({ where: { id: planId } });
+    if (!plan) {
+      throw new AppError('Contribution plan not found', 404);
+    }
+
+    const subscription = await prisma.contributionSubscription.findFirst({
+      where: { userId: req.userId, status: 'active' },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      throw new AppError('No active subscription to change', 404);
+    }
+
+    if (subscription.planId === plan.id) {
+      return res.json({ subscription: serializeSubscription(subscription) });
+    }
+
+    const updated = await prisma.contributionSubscription.update({
+      where: { id: subscription.id },
+      data: { planId: plan.id },
+      include: { plan: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.userId,
+        action: 'CONTRIBUTION_PLAN_CHANGED',
+        metadata: {
+          fromPlanId: subscription.planId,
+          fromPlanName: subscription.plan.name,
+          toPlanId: plan.id,
+          planName: plan.name,
+          monthlyAmount: plan.monthlyAmount,
+        },
+      },
+    });
+
+    res.json({ subscription: serializeSubscription(updated) });
+  }),
+);
+
 router.get(
   '/overview',
   requireAuth,

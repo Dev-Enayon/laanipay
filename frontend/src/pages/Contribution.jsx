@@ -15,6 +15,7 @@ export default function Contribution() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
+  const [changingPlan, setChangingPlan] = useState(false);
 
   const loadOverview = async () => {
     const data = await api('/contributions/overview');
@@ -41,6 +42,22 @@ export default function Contribution() {
       await loadOverview();
     } catch (err) {
       setError(err.message ?? 'Could not subscribe');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changePlan = async (planId) => {
+    setError('');
+    setInfo('Switching your plan...');
+    setBusy(true);
+    try {
+      const data = await api('/contributions/plan', { method: 'PATCH', body: { planId } });
+      setInfo('Plan updated successfully.');
+      setChangingPlan(false);
+      await loadOverview();
+    } catch (err) {
+      setError(err.message ?? 'Could not change plan');
     } finally {
       setBusy(false);
     }
@@ -115,21 +132,38 @@ export default function Contribution() {
         </div>
       )}
 
-      {!subscription && (
-        <div className="mt-8 grid gap-6 md:grid-cols-3">
+      {changingPlan && (
+        <div className="mt-8 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900">Choose your new plan</h3>
+            <button
+              onClick={() => setChangingPlan(false)}
+              className="text-sm font-semibold text-primary hover:underline"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-sm text-slate-500">
+            Your payment history and progress are kept — only the monthly amount changes.
+          </p>
+        </div>
+      )}
+
+      {(!subscription || changingPlan) && (
+        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan, index) => (
             <Reveal key={plan.id} delay={index * 120}>
               <div
                 className={`card-light h-full p-8 transition-all duration-300 hover:-translate-y-1.5 ${
-                  index === 2 ? 'hover:shadow-neon' : 'hover:shadow-glow'
+                  index === 3 ? 'hover:shadow-neon' : 'hover:shadow-glow'
                 }`}
               >
                 <div
                   className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl ${
-                    index === 2 ? 'bg-neon/15' : 'bg-primary/10'
+                    index === 3 ? 'bg-neon/15' : 'bg-primary/10'
                   }`}
                 >
-                  <PiggyBank className={`h-6 w-6 ${index === 2 ? 'text-emerald-600' : 'text-primary'}`} />
+                  <PiggyBank className={`h-6 w-6 ${index === 3 ? 'text-emerald-600' : 'text-primary'}`} />
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">{plan.name}</h3>
                 <p className="mt-3 text-3xl font-extrabold text-slate-900">
@@ -139,13 +173,27 @@ export default function Contribution() {
                 <p className="mt-3 text-sm text-slate-500">
                   {naira(plan.monthlyAmount * 12)} over a 12-month cycle
                 </p>
-                <button
-                  onClick={() => subscribe(plan.id)}
-                  disabled={busy}
-                  className={`mt-6 w-full ${index === 2 ? 'btn-neon' : 'btn-primary'}`}
-                >
-                  {busy ? 'Setting up...' : 'Choose plan'}
-                </button>
+                {subscription ? (
+                  <button
+                    onClick={() => changePlan(plan.id)}
+                    disabled={busy || subscription.plan.id === plan.id}
+                    className={`mt-6 w-full ${index === 3 ? 'btn-neon' : 'btn-primary'}`}
+                  >
+                    {subscription.plan.id === plan.id
+                      ? 'Current plan'
+                      : busy
+                        ? 'Switching...'
+                        : 'Switch to this plan'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => subscribe(plan.id)}
+                    disabled={busy}
+                    className={`mt-6 w-full ${index === 3 ? 'btn-neon' : 'btn-primary'}`}
+                  >
+                    {busy ? 'Setting up...' : 'Choose plan'}
+                  </button>
+                )}
               </div>
             </Reveal>
           ))}
@@ -174,6 +222,12 @@ export default function Contribution() {
 
             <button onClick={payNow} disabled={busy} className="btn-primary mt-6">
               {busy ? 'Processing...' : `Pay ${naira(subscription.plan.monthlyAmount)} now`}
+            </button>
+            <button
+              onClick={() => setChangingPlan(true)}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-600 transition-all duration-300 hover:border-primary hover:text-primary"
+            >
+              Change plan
             </button>
             <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
               <ShieldCheck className="h-3.5 w-3.5" />
