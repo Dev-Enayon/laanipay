@@ -15,8 +15,9 @@ const prisma = new PrismaClient({ adapter });
 
 const CONTRIBUTION_PLANS = [
   { name: 'Starter Saver', monthlyAmount: 100000 },
-  { name: 'Growth Saver', monthlyAmount: 200000 },
-  { name: 'Premium Saver', monthlyAmount: 500000 },
+  { name: 'Growth Saver', monthlyAmount: 500000 },
+  { name: 'Premium Saver', monthlyAmount: 1000000 },
+  { name: 'Diamond Saver', monthlyAmount: 2000000 },
 ];
 
 async function main() {

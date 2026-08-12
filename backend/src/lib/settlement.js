@@ -134,6 +134,10 @@ export async function settlePayment({ reference, expectedUserId }) {
           where: { id: contribution.subscriptionId },
           data: { nextPaymentDate },
         });
+        await tx.wallet.update({
+          where: { userId: contribution.subscription.userId },
+          data: { totalContributed: { increment: contribution.amount } },
+        });
         await tx.auditLog.create({
           data: {
             userId: contribution.subscription.userId,

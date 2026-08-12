@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Network, PiggyBank, LogOut, Sparkles } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const linkClass = ({ isActive }) =>
@@ -71,6 +71,9 @@ export default function Navbar() {
     <>
       <NavLink to="/dashboard" className={navClass}>
         Dashboard
+      </NavLink>
+      <NavLink to="/wallet" className={navClass}>
+        Wallet
       </NavLink>
       <NavLink to="/mlm" className={navClass}>
         MLM
@@ -145,6 +148,9 @@ export default function Navbar() {
               <>
                 <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
                   <LayoutDashboard className="h-4 w-4" /> Dashboard
+                </Link>
+                <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                  <Wallet className="h-4 w-4" /> Wallet
                 </Link>
                 <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
                   <Network className="h-4 w-4" /> MLM Platform

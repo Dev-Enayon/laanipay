@@ -36,10 +36,11 @@ model User {
 }
 
 model Wallet {
-  id        String   @id @default(cuid())
-  userId    String   @unique @map("user_id")
-  balance   Int      @default(0)
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  balance          Int      @default(0)
+  totalContributed Int      @default(0) @map("total_contributed")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

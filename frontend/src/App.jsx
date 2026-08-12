@@ -15,6 +15,7 @@ const Login = lazy(() => import('./pages/Login.jsx'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail.jsx'));
 const Activate = lazy(() => import('./pages/Activate.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Wallet = lazy(() => import('./pages/Wallet.jsx'));
 const Mlm = lazy(() => import('./pages/Mlm.jsx'));
 const Contribution = lazy(() => import('./pages/Contribution.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
@@ -56,6 +57,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/wallet"
+              element={
+                <ProtectedRoute>
+                  <Wallet />
                 </ProtectedRoute>
               }
             />

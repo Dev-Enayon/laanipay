@@ -38,15 +38,23 @@ export default function Dashboard() {
         </div>
 
         <div className="relative mt-8 grid gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5">
+          <Link to="/wallet" className="group rounded-2xl border border-slate-100 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow">
             <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
               <Wallet className="h-4 w-4 text-primary" /> Wallet balance
             </div>
             <p className="mt-2 text-2xl font-extrabold text-slate-900">
               {naira(wallet?.balance ?? 0)}
             </p>
-            <p className="mt-1 text-xs text-slate-400">MLM referral earnings</p>
-          </div>
+            <p className="mt-1 flex items-center justify-between text-xs text-slate-400">
+              <span>MLM referral earnings</span>
+              <span className="font-semibold text-emerald-600">
+                {naira(wallet?.totalContributed ?? 0)} contributed
+              </span>
+            </p>
+            <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+              Open wallet →
+            </span>
+          </Link>
           <div className="rounded-2xl border border-slate-100 bg-white p-5">
             <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
               <Share2 className="h-4 w-4 text-primary" /> Your referral code

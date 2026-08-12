@@ -13,7 +13,7 @@ router.get(
     if (!wallet) {
       throw new AppError('Wallet not found', 404);
     }
-    res.json({ balance: wallet.balance });
+    res.json({ balance: wallet.balance, totalContributed: wallet.totalContributed });
   }),
 );
 
