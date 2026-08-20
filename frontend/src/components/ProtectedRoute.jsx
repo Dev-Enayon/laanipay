@@ -9,7 +9,7 @@ export function FullScreenLoader() {
   );
 }
 
-// Protected pages (/dashboard, /mlm, /contribution):
+// Protected pages (/dashboard, /wallet, /mlm, /contribution):
 // requires login AND activation. Admins are routed to their dashboard.
 export function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();

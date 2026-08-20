@@ -37,43 +37,50 @@ router.post(
       throw new AppError('Contribution plan not found', 404);
     }
 
-    const existing = await prisma.contributionSubscription.findFirst({
-      where: { userId: req.userId, status: 'active' },
-      include: { plan: true },
+    let isNew = false;
+    const subscription = await prisma.$transaction(async (tx) => {
+      const existing = await tx.contributionSubscription.findFirst({
+        where: { userId: req.userId, status: 'active' },
+        include: { plan: true },
+      });
+
+      if (existing) return existing;
+
+      isNew = true;
+      const nextPaymentDate = new Date();
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+      return tx.contributionSubscription.create({
+        data: {
+          userId: req.userId,
+          planId: plan.id,
+          status: 'active',
+          nextPaymentDate,
+        },
+        include: { plan: true },
+      });
     });
 
-    if (existing) {
-      return res.json({ subscription: serializeSubscription(existing) });
+    if (isNew) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.userId,
+          action: 'CONTRIBUTION_SUBSCRIBED',
+          metadata: { planId: plan.id, planName: plan.name, monthlyAmount: plan.monthlyAmount },
+        },
+      });
+
+      const nextPaymentDate = new Date();
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+      sendContributionSubscribedEmail({
+        to: req.user.email,
+        name: req.user.fullName,
+        planName: plan.name,
+        monthlyAmount: plan.monthlyAmount,
+        nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
+      });
     }
-
-    const nextPaymentDate = new Date();
-    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-
-    const subscription = await prisma.contributionSubscription.create({
-      data: {
-        userId: req.userId,
-        planId: plan.id,
-        status: 'active',
-        nextPaymentDate,
-      },
-      include: { plan: true },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.userId,
-        action: 'CONTRIBUTION_SUBSCRIBED',
-        metadata: { planId: plan.id, planName: plan.name, monthlyAmount: plan.monthlyAmount },
-      },
-    });
-
-    sendContributionSubscribedEmail({
-      to: req.user.email,
-      name: req.user.fullName,
-      planName: plan.name,
-      monthlyAmount: plan.monthlyAmount,
-      nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
-    });
 
     res.status(201).json({ subscription: serializeSubscription(subscription) });
   }),
@@ -188,26 +195,22 @@ router.post(
       throw new AppError('Active subscription not found', 404);
     }
 
-    const pending = await prisma.contributionPayment.findFirst({
-      where: { subscriptionId: subscription.id, status: 'pending' },
-    });
-
-    if (pending) {
-      return res.json({
-        reference: pending.paystackReference,
-        amount: pending.amount,
-        email: req.user.email,
+    const payment = await prisma.$transaction(async (tx) => {
+      const pending = await tx.contributionPayment.findFirst({
+        where: { subscriptionId: subscription.id, status: 'pending' },
       });
-    }
 
-    const reference = `laani-cnt-${randomUUID().replaceAll('-', '')}`;
-    const payment = await prisma.contributionPayment.create({
-      data: {
-        subscriptionId: subscription.id,
-        paystackReference: reference,
-        amount: subscription.plan.monthlyAmount,
-        status: 'pending',
-      },
+      if (pending) return pending;
+
+      const reference = `laani-cnt-${randomUUID().replaceAll('-', '')}`;
+      return tx.contributionPayment.create({
+        data: {
+          subscriptionId: subscription.id,
+          paystackReference: reference,
+          amount: subscription.plan.monthlyAmount,
+          status: 'pending',
+        },
+      });
     });
 
     res.json({

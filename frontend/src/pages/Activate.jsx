@@ -61,24 +61,30 @@ export default function Activate() {
         reference: init.reference,
         metadata: { custom_fields: [{ display_name: 'LaaniPay Activation', variable_name: 'purpose', value: 'Account activation' }] },
         onSuccess: async (reference) => {
-          setInfo('Payment received. Verifying with Paystack...');
-          const result = await api('/payments/verify', { method: 'POST', body: { reference } });
+          try {
+            setInfo('Payment received. Verifying with Paystack...');
+            const result = await api('/payments/verify', { method: 'POST', body: { reference } });
 
-          if (result.verified) {
-            setVerified(true);
-            await refreshUser();
-            setTimeout(() => navigate('/dashboard', { replace: true }), 1200);
-          } else {
-            setError('We could not confirm your payment. Please try again.');
+            if (result.verified) {
+              setVerified(true);
+              await refreshUser();
+              setTimeout(() => navigate('/dashboard', { replace: true }), 1200);
+            } else {
+              setError('We could not confirm your payment. Please try again.');
+            }
+          } catch (err) {
+            setError(err.message ?? 'Verification failed. Please try again.');
+          } finally {
+            setBusy(false);
           }
         },
         onCancel: () => {
           setInfo('');
+          setBusy(false);
         },
       });
     } catch (err) {
       setError(err.message ?? 'Could not start payment. Please try again.');
-    } finally {
       setBusy(false);
     }
   };

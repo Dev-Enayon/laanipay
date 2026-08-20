@@ -87,22 +87,28 @@ export default function Contribution() {
           custom_fields: [{ display_name: 'Contribution', variable_name: 'purpose', value: 'Monthly contribution' }],
         },
         onSuccess: async (reference) => {
-          setInfo('Payment received. Verifying with Paystack...');
-          const result = await api('/payments/verify', { method: 'POST', body: { reference } });
-          if (result.verified) {
-            setInfo('Payment verified. Thanks for contributing!');
-            await loadOverview();
-          } else {
-            setError('We could not confirm your payment. Please try again.');
+          try {
+            setInfo('Payment received. Verifying with Paystack...');
+            const result = await api('/payments/verify', { method: 'POST', body: { reference } });
+            if (result.verified) {
+              setInfo('Payment verified. Thanks for contributing!');
+              await loadOverview();
+            } else {
+              setError('We could not confirm your payment. Please try again.');
+            }
+          } catch (err) {
+            setError(err.message ?? 'Verification failed. Please try again.');
+          } finally {
+            setBusy(false);
           }
         },
         onCancel: () => {
           setInfo('');
+          setBusy(false);
         },
       });
     } catch (err) {
       setError(err.message ?? 'Could not start payment. Please try again.');
-    } finally {
       setBusy(false);
     }
   };

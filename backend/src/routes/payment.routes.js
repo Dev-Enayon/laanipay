@@ -20,27 +20,22 @@ router.post(
       throw new AppError('Please verify your email address before activating your account', 403);
     }
 
-    const existing = await prisma.activationPayment.findFirst({
-      where: { userId: req.userId, status: 'pending' },
-    });
-
-    if (existing) {
-      return res.json({
-        reference: existing.paystackReference,
-        amount: existing.amount,
-        email: req.user.email,
+    const payment = await prisma.$transaction(async (tx) => {
+      const existing = await tx.activationPayment.findFirst({
+        where: { userId: req.userId, status: 'pending' },
       });
-    }
 
-    const reference = `laani-act-${randomUUID()}`;
+      if (existing) return existing;
 
-    const payment = await prisma.activationPayment.create({
-      data: {
-        userId: req.userId,
-        paystackReference: reference,
-        amount: env.activationFeeKobo,
-        status: 'pending',
-      },
+      const reference = `laani-act-${randomUUID()}`;
+      return tx.activationPayment.create({
+        data: {
+          userId: req.userId,
+          paystackReference: reference,
+          amount: env.activationFeeKobo,
+          status: 'pending',
+        },
+      });
     });
 
     res.json({ reference: payment.paystackReference, amount: payment.amount, email: req.user.email });

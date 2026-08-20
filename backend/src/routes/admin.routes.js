@@ -83,8 +83,9 @@ router.get(
         contributionSubscriptions: { some: { planId, status: 'active' } },
       });
     }
+    let depthMap = null;
     if (level > 0) {
-      const depthMap = await buildDepthMap();
+      depthMap = await buildDepthMap();
       const ids = Array.from(depthMap.entries())
         .filter(([, d]) => d === level)
         .map(([id]) => id);
@@ -149,7 +150,9 @@ router.get(
     const directByUser = Object.fromEntries(directRows.map((r) => [r.referrerId, r._count._all]));
     const downlineByUser = Object.fromEntries(downlineRows.map((r) => [r.referrerId, r._count._all]));
 
-    const depthMap = await buildDepthMap();
+    if (!depthMap) {
+      depthMap = await buildDepthMap();
+    }
 
     const rows = users.map((u) => ({
       id: u.id,
@@ -428,12 +431,13 @@ router.post(
     }
 
     const delta = type === 'withdrawal' ? -amountNum : type === 'adjustment' ? amountNum : amountNum;
-    const newBalance = target.wallet.balance + delta;
-    if (newBalance < 0) {
-      throw new AppError('Insufficient wallet balance', 400);
-    }
 
     const wallet = await prisma.$transaction(async (tx) => {
+      const current = await tx.wallet.findUnique({ where: { userId: target.id } });
+      const newBalance = current.balance + delta;
+      if (newBalance < 0) {
+        throw new AppError('Insufficient wallet balance', 400);
+      }
       const updated = await tx.wallet.update({
         where: { id: target.wallet.id },
         data: { balance: newBalance },
