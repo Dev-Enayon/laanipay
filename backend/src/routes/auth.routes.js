@@ -6,11 +6,12 @@ import { issueTokenPair, verifyRefreshToken } from '../lib/jwt.js';
 import { env } from '../config/env.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
-import { authLimiter, signupLimiter } from '../middleware/rateLimit.js';
+import { authLimiter, signupLimiter, verifyLimiter } from '../middleware/rateLimit.js';
 import {
   sendVerificationEmail,
   sendWelcomeEmail,
   sendLoginAlertEmail,
+  MailNotConfiguredError,
 } from '../lib/mailer.js';
 
 const router = Router();
@@ -116,14 +117,20 @@ router.post(
 
     const tokens = issueTokenPair(user.id);
 
+    let emailWarning = null;
     try {
       const token = await issueVerificationToken(normalizedEmail);
       await sendVerificationEmail({ to: normalizedEmail, name, token });
     } catch (err) {
       console.error('[auth] failed to issue/send verification email:', err.message);
+      if (err instanceof MailNotConfiguredError) {
+        emailWarning = 'Email service is not configured. Please ask support to verify your email.';
+      } else {
+        emailWarning = 'We could not send a verification email. Please use "Resend verification" on the activation page.';
+      }
     }
 
-    res.status(201).json({ message: 'Signup successful', user: serializeUser(user), ...tokens });
+    res.status(201).json({ message: 'Signup successful', user: serializeUser(user), ...tokens, ...(emailWarning ? { emailWarning } : {}) });
   }),
 );
 
@@ -206,6 +213,7 @@ router.post(
 
 router.post(
   '/resend-verification',
+  verifyLimiter,
   asyncHandler(async (req, res) => {
     const { email } = req.body ?? {};
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
@@ -222,7 +230,14 @@ router.post(
     }
 
     const token = await issueVerificationToken(user.email);
-    sendVerificationEmail({ to: user.email, name: user.fullName, token });
+    try {
+      await sendVerificationEmail({ to: user.email, name: user.fullName, token });
+    } catch (err) {
+      if (err instanceof MailNotConfiguredError) {
+        throw new AppError('Email service is not configured. Please contact support.', 503);
+      }
+      throw new AppError('Failed to send verification email. Please try again later.', 500);
+    }
 
     res.json({ message: 'Verification email sent' });
   }),

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, CreditCard, CheckCircle2, Loader2, MailCheck } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ShieldCheck, CreditCard, CheckCircle2, Loader2, MailCheck, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira } from '../lib/format.js';
 import { payWithPaystack } from '../lib/paystack.js';
@@ -11,6 +11,8 @@ const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 export default function Activate() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const emailWarning = location.state?.emailWarning ?? null;
 
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -110,6 +112,15 @@ export default function Activate() {
             </div>
             <p className="mt-2 text-xs text-white/40">One-time payment · Paystack secured</p>
           </div>
+
+          {emailWarning && (
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4" />
+                {emailWarning}
+              </div>
+            </div>
+          )}
 
           {!user?.emailVerified && (
             <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">

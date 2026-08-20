@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, Navigate } from 'react-router-dom';
 import { MailCheck, MailX, Loader2, ArrowRight } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') ?? '';
+  const { user, refreshUser } = useAuth();
 
   const [state, setState] = useState('loading'); // loading | success | error | invalid
   const [message, setMessage] = useState('');
@@ -17,10 +19,11 @@ export default function VerifyEmail() {
       return;
     }
     api('/auth/verify-email', { method: 'POST', body: { token } })
-      .then((data) => {
+      .then(async (data) => {
         if (!active) return;
         setMessage(data?.message ?? 'Email verified successfully');
         setState('success');
+        try { await refreshUser(); } catch { /* ok */ }
       })
       .catch((err) => {
         if (!active) return;
@@ -48,14 +51,19 @@ export default function VerifyEmail() {
 
           {state === 'success' && (
             <>
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-neon/10">
-                <MailCheck className="h-8 w-8 text-emerald-600" />
-              </div>
-              <h1 className="text-2xl font-bold text-slate-900">Email verified!</h1>
-              <p className="mt-2 text-sm text-slate-500">{message}</p>
-              <Link to="/login" className="btn-primary mt-8 inline-flex w-full items-center justify-center gap-2">
-                Continue to login <ArrowRight className="h-4 w-4" />
-              </Link>
+              {user && <Navigate to={user.activationStatus ? '/dashboard' : '/activate'} replace />}
+              {!user && (
+                <>
+                  <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-neon/10">
+                    <MailCheck className="h-8 w-8 text-emerald-600" />
+                  </div>
+                  <h1 className="text-2xl font-bold text-slate-900">Email verified!</h1>
+                  <p className="mt-2 text-sm text-slate-500">{message}</p>
+                  <Link to="/login" className="btn-primary mt-8 inline-flex w-full items-center justify-center gap-2">
+                    Continue to login <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </>
+              )}
             </>
           )}
 

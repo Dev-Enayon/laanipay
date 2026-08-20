@@ -60,10 +60,17 @@ function button(href, label) {
   </td></tr></table>`;
 }
 
+export class MailNotConfiguredError extends Error {
+  constructor() {
+    super('Email service is not configured');
+    this.name = 'MailNotConfiguredError';
+  }
+}
+
 async function sendMail({ to, subject, html, text }) {
   if (!env.resendApiKey) {
     console.warn(`[mail] RESEND_API_KEY not set — skipped "${subject}" to ${to}`);
-    return false;
+    throw new MailNotConfiguredError();
   }
   try {
     const res = await fetch(RESEND_URL, {

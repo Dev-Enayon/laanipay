@@ -55,7 +55,7 @@ export function AuthProvider({ children }) {
     const data = await api('/auth/signup', { method: 'POST', body: payload });
     setTokens(data);
     setUser(data.user);
-    return data.user;
+    return { user: data.user, emailWarning: data.emailWarning ?? null };
   }, []);
 
   const refreshUser = useCallback(async () => {

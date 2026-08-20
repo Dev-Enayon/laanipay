@@ -39,8 +39,8 @@ export default function Signup() {
     setSubmitting(true);
     try {
       const { fullName, email, phone, password, referralCode } = form;
-      await signup({ fullName, email, phone, password, referralCode });
-      navigate('/activate', { replace: true });
+      const result = await signup({ fullName, email, phone, password, referralCode });
+      navigate('/activate', { replace: true, state: result.emailWarning ? { emailWarning: result.emailWarning } : undefined });
     } catch (err) {
       setError(err.message ?? 'Signup failed. Please try again.');
     } finally {
