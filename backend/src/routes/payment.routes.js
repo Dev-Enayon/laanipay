@@ -21,11 +21,10 @@ router.post(
     }
 
     const payment = await prisma.$transaction(async (tx) => {
-      const existing = await tx.activationPayment.findFirst({
+      await tx.activationPayment.updateMany({
         where: { userId: req.userId, status: 'pending' },
+        data: { status: 'cancelled' },
       });
-
-      if (existing) return existing;
 
       const reference = `laani-act-${randomUUID()}`;
       return tx.activationPayment.create({

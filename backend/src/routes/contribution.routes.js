@@ -196,11 +196,10 @@ router.post(
     }
 
     const payment = await prisma.$transaction(async (tx) => {
-      const pending = await tx.contributionPayment.findFirst({
+      await tx.contributionPayment.updateMany({
         where: { subscriptionId: subscription.id, status: 'pending' },
+        data: { status: 'cancelled' },
       });
-
-      if (pending) return pending;
 
       const reference = `laani-cnt-${randomUUID().replaceAll('-', '')}`;
       return tx.contributionPayment.create({
