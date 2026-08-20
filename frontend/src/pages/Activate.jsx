@@ -123,23 +123,25 @@ export default function Activate() {
           )}
 
           {!user?.emailVerified && (
-            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-5 text-sm text-amber-200">
               <div className="flex items-center gap-2 font-medium">
                 <MailCheck className="h-4 w-4" />
                 Verify your email to activate your account
               </div>
               <p className="mt-1 text-xs text-amber-200/70">
-                Check your inbox for the verification link we sent to {user?.email}.
+                We sent a verification link to <span className="font-semibold text-amber-100">{user?.email}</span>.
               </p>
               <button
                 type="button"
                 onClick={handleResend}
                 disabled={resending}
-                className="mt-2 text-xs font-semibold text-amber-300 underline-offset-2 hover:underline disabled:opacity-50"
+                className="mt-3 w-full rounded-lg border border-amber-400/40 bg-amber-400/10 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/20 disabled:opacity-50"
               >
                 {resending ? 'Sending...' : 'Resend verification email'}
               </button>
-              {resendMsg && <p className="mt-1 text-xs text-amber-200/80">{resendMsg}</p>}
+              {resendMsg && (
+                <p className="mt-2 text-xs text-amber-200/80">{resendMsg}</p>
+              )}
             </div>
           )}
 
