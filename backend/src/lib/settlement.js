@@ -73,7 +73,7 @@ export async function settlePayment({ reference, expectedUserId }) {
     if (freshlyActivated) {
       const user = await prisma.user.findUnique({ where: { id: activation.userId } });
       if (user) {
-        sendActivationSuccessEmail({ to: user.email, name: user.fullName, bonuses: bonusesCredited });
+        sendActivationSuccessEmail({ to: user.email, name: user.fullName, bonuses: bonusesCredited }).catch(() => {});
         for (const bonus of bonusesCredited) {
           sendBonusReceivedEmail({
             to: bonus.email,
@@ -81,10 +81,10 @@ export async function settlePayment({ reference, expectedUserId }) {
             referrerName: user.fullName,
             bonus: bonus.bonus,
             level: bonus.level,
-          });
+          }).catch(() => {});
         }
         for (const change of rankChanges) {
-          sendRankUpEmail({ to: change.email, name: change.name, rank: change.rank });
+          sendRankUpEmail({ to: change.email, name: change.name, rank: change.rank }).catch(() => {});
         }
       }
     }
@@ -170,7 +170,7 @@ export async function settlePayment({ reference, expectedUserId }) {
           amount: contribution.amount,
           reference,
           nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
-        });
+        }).catch(() => {});
       }
     }
 

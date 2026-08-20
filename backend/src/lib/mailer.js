@@ -90,13 +90,15 @@ async function sendMail({ to, subject, html, text }) {
     });
     if (!res.ok) {
       const body = await res.text();
-      console.error(`[mail] Resend ${res.status}: ${body.slice(0, 300)}`);
-      return false;
+      const msg = `Resend ${res.status}: ${body.slice(0, 300)}`;
+      console.error(`[mail] ${msg}`);
+      throw new Error(msg);
     }
     return true;
   } catch (err) {
+    if (err instanceof MailNotConfiguredError) throw err;
     console.error('[mail] send failed:', err.message);
-    return false;
+    throw err;
   }
 }
 

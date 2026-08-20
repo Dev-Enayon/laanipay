@@ -172,7 +172,7 @@ router.post(
       name: user.fullName,
       at: new Date().toISOString(),
       ip: req.ip,
-    });
+    }).catch(() => {});
 
     const tokens = issueTokenPair(user.id);
     res.json({ user: serializeUser(user), ...tokens });
@@ -205,7 +205,7 @@ router.post(
       data: { userId: user.id, action: 'EMAIL_VERIFIED', metadata: { email: user.email } },
     });
 
-    sendWelcomeEmail({ to: user.email, name: user.fullName });
+    sendWelcomeEmail({ to: user.email, name: user.fullName }).catch(() => {});
 
     res.json({ message: 'Email verified successfully' });
   }),

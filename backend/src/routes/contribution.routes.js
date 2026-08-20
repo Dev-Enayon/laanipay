@@ -79,7 +79,7 @@ router.post(
         planName: plan.name,
         monthlyAmount: plan.monthlyAmount,
         nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],
-      });
+      }).catch(() => {});
     }
 
     res.status(201).json({ subscription: serializeSubscription(subscription) });
