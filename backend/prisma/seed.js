@@ -80,7 +80,24 @@ async function main() {
   }
 }
 
-main()
+const TRANSIENT = /websocket|econnreset|econnrefused|etimedout|epipe|connection (closed|terminated|reset)|network error|fetch failed|not available/i;
+
+async function runWithRetry(fn, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt < retries && TRANSIENT.test(`${err?.message ?? err} ${err?.code ?? ''}`)) {
+        console.warn(`Transient error on attempt ${attempt}/${retries}, retrying in ${attempt * 2}s...`);
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+runWithRetry(() => main())
   .then(() => prisma.$disconnect())
   .catch(async (err) => {
     console.error('Seed failed:', err);
