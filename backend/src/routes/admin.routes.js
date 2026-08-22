@@ -12,8 +12,10 @@ router.use(requireAuth, requireAdmin);
 const LEVELS = 3;
 
 function num(value, fallback) {
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) ? n : fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  if (!Number.isInteger(n)) return fallback;
+  return n;
 }
 
 async function buildDepthMap() {
@@ -433,21 +435,19 @@ router.post(
     const delta = type === 'withdrawal' ? -amountNum : type === 'adjustment' ? amountNum : amountNum;
 
     const wallet = await prisma.$transaction(async (tx) => {
-      const current = await tx.wallet.findUnique({ where: { userId: target.id } });
-      const newBalance = current.balance + delta;
-      if (newBalance < 0) {
-        throw new AppError('Insufficient wallet balance', 400);
-      }
       const updated = await tx.wallet.update({
         where: { id: target.wallet.id },
-        data: { balance: newBalance },
+        data: { balance: { increment: delta } },
       });
+      if (updated.balance < 0) {
+        throw new AppError('Insufficient wallet balance', 400);
+      }
       await tx.walletTransaction.create({
         data: {
           userId: target.id,
           type,
           amount: Math.abs(amountNum),
-          balanceAfter: newBalance,
+          balanceAfter: updated.balance,
           status: 'completed',
           description,
           metadata: { adminId: req.user.id, sign: delta < 0 ? -1 : 1 },
@@ -455,6 +455,8 @@ router.post(
       });
       return updated;
     });
+
+    await logAudit({
 
     await logAudit({
       adminId: req.user.id,

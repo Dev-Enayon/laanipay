@@ -118,7 +118,10 @@ export async function settlePayment({ reference, expectedUserId }) {
     }
 
     const nextPaymentDate = new Date(contribution.subscription.nextPaymentDate);
+    nextPaymentDate.setDate(1);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    const lastDay = new Date(nextPaymentDate.getFullYear(), nextPaymentDate.getMonth() + 1, 0).getDate();
+    nextPaymentDate.setDate(Math.min(contribution.subscription.nextPaymentDate.getDate(), lastDay));
 
     let freshlyVerified = false;
 

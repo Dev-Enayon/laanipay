@@ -1,8 +1,8 @@
 import { env } from '../config/env.js';
 
 // Minimal email layer on top of the Resend API (https://resend.com).
-// Every helper is fire-and-forget safe: it never throws, so a mail outage
-// can never break a payment, signup, or any other request flow.
+// Critical callers (signup, resend-verification) wrap calls in try/catch.
+// Fire-and-forget callers (settlement, login alerts) use .catch(() => {}).
 
 const RESEND_URL = 'https://api.resend.com/emails';
 

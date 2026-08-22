@@ -90,8 +90,10 @@ router.post(
 
     const passwordHash = await bcrypt.hash(password, env.bcryptRounds);
 
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
+    let user;
+    try {
+      user = await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
         data: {
           fullName: name,
           email: normalizedEmail,
@@ -114,6 +116,12 @@ router.post(
       });
       return created;
     });
+    } catch (err) {
+      if (err?.code === 'P2002') {
+        throw new AppError('An account with this email already exists', 409);
+      }
+      throw err;
+    }
 
     const tokens = issueTokenPair(user.id);
 

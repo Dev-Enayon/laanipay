@@ -10,6 +10,15 @@ const router = Router();
 
 export const CYCLE_MONTHS = 12;
 
+function addOneMonth(date) {
+  const d = new Date(date);
+  d.setDate(1);
+  d.setMonth(d.getMonth() + 1);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(date.getDate(), lastDay));
+  return d;
+}
+
 router.get(
   '/plans',
   asyncHandler(async (req, res) => {
@@ -47,8 +56,7 @@ router.post(
       if (existing) return existing;
 
       isNew = true;
-      const nextPaymentDate = new Date();
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+      const nextPaymentDate = addOneMonth(new Date());
 
       return tx.contributionSubscription.create({
         data: {
@@ -70,8 +78,7 @@ router.post(
         },
       });
 
-      const nextPaymentDate = new Date();
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+      const nextPaymentDate = addOneMonth(new Date());
 
       sendContributionSubscribedEmail({
         to: req.user.email,

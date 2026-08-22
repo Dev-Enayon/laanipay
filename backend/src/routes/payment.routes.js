@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { settlePayment } from '../lib/settlement.js';
 import { env } from '../config/env.js';
@@ -73,7 +73,9 @@ router.post(
     }
 
     const expected = createHmac('sha512', secret).update(rawBody).digest('hex');
-    if (expected !== signature) {
+    const sigBuf = Buffer.from(signature, 'hex');
+    const expBuf = Buffer.from(expected, 'hex');
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
