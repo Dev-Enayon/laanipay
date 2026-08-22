@@ -2,16 +2,13 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
 
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
+if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set — cannot run seed.');
   process.exit(1);
 }
 
-const adapter = new PrismaNeon({ connectionString: databaseUrl });
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient();
 
 const CONTRIBUTION_PLANS = [
   { name: 'Starter Saver', monthlyAmount: 100000 },
@@ -80,24 +77,7 @@ async function main() {
   }
 }
 
-const TRANSIENT = /websocket|econnreset|econnrefused|etimedout|epipe|connection (closed|terminated|reset)|network error|fetch failed|not available/i;
-
-async function runWithRetry(fn, retries = 3) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (attempt < retries && TRANSIENT.test(`${err?.message ?? err} ${err?.code ?? ''}`)) {
-        console.warn(`Transient error on attempt ${attempt}/${retries}, retrying in ${attempt * 2}s...`);
-        await new Promise((r) => setTimeout(r, attempt * 2000));
-        continue;
-      }
-      throw err;
-    }
-  }
-}
-
-runWithRetry(() => main())
+main()
   .then(() => prisma.$disconnect())
   .catch(async (err) => {
     console.error('Seed failed:', err);
