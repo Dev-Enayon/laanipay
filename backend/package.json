@@ -12,9 +12,6 @@
     "prisma:push": "prisma db push",
     "seed": "node prisma/seed.js"
   },
-  "prisma": {
-    "seed": "node prisma/seed.js"
-  },
   "engines": {
     "node": ">=20"
   },
