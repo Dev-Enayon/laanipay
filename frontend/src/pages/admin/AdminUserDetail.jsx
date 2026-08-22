@@ -100,6 +100,7 @@ export default function AdminUserDetail() {
   const [message, setMessage] = useState('');
 
   const load = () => {
+    setError('');
     setMessage('');
     api(`/admin/users/${id}`)
       .then(setData)
@@ -109,6 +110,7 @@ export default function AdminUserDetail() {
   useEffect(load, [id]);
 
   const runAction = async (fn, successMsg) => {
+    setError('');
     setBusy(true);
     try {
       await fn();

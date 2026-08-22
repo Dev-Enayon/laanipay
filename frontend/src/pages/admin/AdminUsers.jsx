@@ -41,6 +41,7 @@ export default function AdminUsers() {
   }, []);
 
   useEffect(() => {
+    setError('');
     let active = true;
     setData(null);
     const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE), sort, order });

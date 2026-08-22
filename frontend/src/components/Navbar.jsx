@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -16,6 +16,7 @@ const darkLinkClass = ({ isActive }) =>
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -26,7 +27,7 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const isLanding = window.location.pathname === '/';
+  const isLanding = location.pathname === '/';
   const onDark = isLanding && !scrolled;
 
   const handleLogout = () => {

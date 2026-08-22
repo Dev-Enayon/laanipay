@@ -47,6 +47,7 @@ export default function AdminOverview() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    setError('');
     let active = true;
     setData(null);
     api(`/admin/stats?period=${period}`)

@@ -1,4 +1,14 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
+const API_URL =
+  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? null : 'http://localhost:5000/api');
+
+function requireApiUrl() {
+  if (!API_URL) {
+    throw new Error(
+      '[api] VITE_API_URL is not configured. Set it in your Vercel project environment variables and rebuild.',
+    );
+  }
+  return API_URL;
+}
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -31,7 +41,7 @@ async function tryRefresh() {
   if (!refreshToken) return false;
 
   try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
+    const res = await fetch(`${requireApiUrl()}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -48,8 +58,9 @@ async function tryRefresh() {
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
+  const baseUrl = requireApiUrl();
   const execute = async (token) =>
-    fetch(`${API_URL}${path}`, {
+    fetch(`${baseUrl}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
