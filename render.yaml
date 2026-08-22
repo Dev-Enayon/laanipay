@@ -1,6 +1,8 @@
 services:
   - type: web
-    name: laanipay-api
+    # Must match the existing Render service (Render appended "-2fzb" when the
+    # original "laanipay-api" name was taken by a stale deployment).
+    name: laanipay-api-2fzb
     runtime: node
     rootDir: backend
     region: oregon
@@ -31,3 +33,9 @@ services:
         value: laanipay@gmail.com
       - key: FRONTEND_URL
         value: https://laanipay.vercel.app
+      # Seed admin — set these in the Render dashboard. Without ADMIN_PASSWORD
+      # the seed script generates one and prints it into the build logs.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

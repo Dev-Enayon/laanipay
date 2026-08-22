@@ -11,12 +11,29 @@ const server = app.listen(env.port, () => {
 // The Neon serverless driver can emit unhandled WebSocket 'error' events on
 // transient network hiccups. Node treats those as fatal by default and kills
 // the process. Log them instead and keep serving — Prisma reconnects lazily.
+// Anything that is NOT a recognized connection hiccup is genuinely fatal:
+// log it and exit(1) so the platform restarts a corrupted process.
 function logFatal(name, err) {
   console.error(`[${name}]`, err?.message ?? err);
 }
 
-process.on('uncaughtException', (err) => logFatal('uncaughtException', err));
-process.on('unhandledRejection', (reason) => logFatal('unhandledRejection', reason));
+const TRANSIENT_DB_ERROR = /websocket|econnreset|econnrefused|etimedout|epipe|connection (closed|terminated|reset)|network error|fetch failed/i;
+
+function isTransientDbError(err) {
+  return TRANSIENT_DB_ERROR.test(`${err?.message ?? err} ${err?.code ?? ''}`);
+}
+
+process.on('uncaughtException', (err) => {
+  if (isTransientDbError(err)) return logFatal('uncaughtException (transient, ignored)', err);
+  logFatal('uncaughtException (fatal) — exiting', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (isTransientDbError(reason)) return logFatal('unhandledRejection (transient, ignored)', reason);
+  logFatal('unhandledRejection (fatal) — exiting', reason);
+  process.exit(1);
+});
 
 async function shutdown() {
   console.log('\nShutting down...');
