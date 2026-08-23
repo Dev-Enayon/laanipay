@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ShieldCheck } from 'lucide-react';
+import PasswordInput from '../components/PasswordInput.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Login() {
@@ -57,10 +58,8 @@ export default function Login() {
 
             <div>
               <label className="label" htmlFor="password">Password</label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
-                className="input"
                 placeholder="Your password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

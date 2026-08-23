@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, Gift, ArrowRight } from 'lucide-react';
+import PasswordInput from '../components/PasswordInput.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Signup() {
@@ -110,10 +111,8 @@ export default function Signup() {
 
             <div>
               <label className="label" htmlFor="password">Password</label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
-                className="input"
                 placeholder="At least 8 characters"
                 value={form.password}
                 onChange={update('password')}
@@ -124,10 +123,8 @@ export default function Signup() {
 
             <div>
               <label className="label" htmlFor="confirmPassword">Confirm password</label>
-              <input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
-                className="input"
                 placeholder="Repeat your password"
                 value={form.confirmPassword}
                 onChange={update('confirmPassword')}
