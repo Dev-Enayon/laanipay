@@ -1,12 +1,17 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
+import seed from './seed-runner.js';
 
 const app = createApp();
 
 const server = app.listen(env.port, () => {
   console.log(`LaaniPay API listening on http://localhost:${env.port}`);
 });
+
+seed()
+  .then(() => console.log('[seed] Done'))
+  .catch((err) => console.error('[seed] Failed:', err.message ?? err));
 
 // The Neon serverless driver can emit unhandled WebSocket 'error' events on
 // transient network hiccups. Node treats those as fatal by default and kills
