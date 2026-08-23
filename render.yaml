@@ -22,7 +22,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CLIENT_ORIGIN
-        sync: false
+        value: https://laanipay.vercel.app
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM

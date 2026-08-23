@@ -69,12 +69,31 @@ export async function api(path, { method = 'GET', body } = {}) {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
-  let res = await execute(getAccessToken());
+  let res;
+  try {
+    res = await execute(getAccessToken());
+  } catch (err) {
+    throw new ApiError(
+      err.name === 'TypeError' && err.message === 'Failed to fetch'
+        ? 'Unable to reach the server. Please try again later.'
+        : err.message,
+      0,
+    );
+  }
 
   if (res.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh')) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await execute(getAccessToken());
+      try {
+        res = await execute(getAccessToken());
+      } catch (err) {
+        throw new ApiError(
+          err.name === 'TypeError' && err.message === 'Failed to fetch'
+            ? 'Unable to reach the server. Please try again later.'
+            : err.message,
+          0,
+        );
+      }
     }
   }
 
