@@ -5,8 +5,8 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaNeon } from '@prisma/adapter-neon';
 
 if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL is not set — cannot run seed.');
-  process.exit(1);
+  console.error('DATABASE_URL is not set — skipping seed.');
+  process.exit(0);
 }
 
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
@@ -84,5 +84,4 @@ main()
   .catch(async (err) => {
     console.error('Seed failed:', err.message ?? err);
     await prisma.$disconnect();
-    if (process.env.SEED_FATAL !== '0') process.exit(1);
   });
