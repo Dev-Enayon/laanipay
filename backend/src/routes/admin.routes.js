@@ -457,8 +457,6 @@ router.post(
     });
 
     await logAudit({
-
-    await logAudit({
       adminId: req.user.id,
       targetUserId: target.id,
       action: 'ADMIN_WALLET_ADJUSTMENT',
