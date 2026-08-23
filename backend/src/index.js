@@ -8,11 +8,11 @@ if (env.nodeEnv === 'production' && env.databaseUrl) {
   try {
     console.log('[db] Generating Prisma client…');
     execSync('npx prisma generate', { stdio: 'inherit', timeout: 60_000 });
-    console.log('[db] Running migrations…');
-    execSync('npx prisma migrate deploy', { stdio: 'inherit', timeout: 60_000 });
-    console.log('[db] Migrations complete');
+    console.log('[db] Pushing schema to database…');
+    execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit', timeout: 120_000 });
+    console.log('[db] Schema synced');
   } catch (err) {
-    console.error('[db] Migration guard failed:', err.message);
+    console.error('[db] Schema sync failed:', err.message);
   }
 }
 
