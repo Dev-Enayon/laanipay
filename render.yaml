@@ -8,8 +8,8 @@ services:
     region: oregon
     nodeVersion: 22.23.2
     plan: free
-    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run seed
-    startCommand: npm start
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
+    startCommand: SEED_FATAL=0 node prisma/seed.js; npm start
     healthCheckPath: /health
     autoDeploy: true
     envVars:

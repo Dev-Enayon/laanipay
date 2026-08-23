@@ -2,13 +2,15 @@ import 'dotenv/config';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
+import { PrismaNeon } from '@prisma/adapter-neon';
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set — cannot run seed.');
   process.exit(1);
 }
 
-const prisma = new PrismaClient();
+const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 const CONTRIBUTION_PLANS = [
   { name: 'Starter Saver', monthlyAmount: 100000 },
@@ -80,7 +82,7 @@ async function main() {
 main()
   .then(() => prisma.$disconnect())
   .catch(async (err) => {
-    console.error('Seed failed:', err);
+    console.error('Seed failed:', err.message ?? err);
     await prisma.$disconnect();
-    process.exit(1);
+    if (process.env.SEED_FATAL !== '0') process.exit(1);
   });
