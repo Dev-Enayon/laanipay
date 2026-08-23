@@ -19,9 +19,12 @@ export const env = {
   frontendUrl:
     process.env.FRONTEND_URL ??
     (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173').split(',')[0].trim(),
-  clientOrigins: (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
-    .split(',')
-    .map((origin) => origin.trim()),
+  clientOrigins: [
+    'https://laanipay.vercel.app',
+    ...(process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim()),
+  ],
   activationFeeKobo: 150000,
   bcryptRounds: 10,
 };
