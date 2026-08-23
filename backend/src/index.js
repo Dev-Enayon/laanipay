@@ -1,7 +1,20 @@
+import { execSync } from 'node:child_process';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
 import seed from './seed-runner.js';
+
+if (env.nodeEnv === 'production' && env.databaseUrl) {
+  try {
+    console.log('[db] Generating Prisma client…');
+    execSync('npx prisma generate', { stdio: 'inherit', timeout: 60_000 });
+    console.log('[db] Running migrations…');
+    execSync('npx prisma migrate deploy', { stdio: 'inherit', timeout: 60_000 });
+    console.log('[db] Migrations complete');
+  } catch (err) {
+    console.error('[db] Migration guard failed:', err.message);
+  }
+}
 
 const app = createApp();
 
