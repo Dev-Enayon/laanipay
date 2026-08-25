@@ -5,15 +5,25 @@ import { prisma } from './lib/prisma.js';
 import seed from './seed-runner.js';
 
 if (env.nodeEnv === 'production' && env.databaseUrl) {
+  const dbEnv = { ...process.env, DATABASE_URL: env.databaseUrl };
   try {
     console.log('[db] Generating Prisma client…');
-    execSync('npx prisma generate', { stdio: 'inherit', timeout: 60_000 });
+    execSync('npx prisma generate', { stdio: 'inherit', timeout: 60_000, env: dbEnv });
     console.log('[db] Pushing schema to database…');
-    execSync('npx prisma db push --accept-data-loss', {
-      stdio: 'inherit',
-      timeout: 120_000,
-      env: { ...process.env, DATABASE_URL: env.databaseUrl },
-    });
+    try {
+      execSync('npx prisma db push --accept-data-loss', {
+        stdio: 'inherit',
+        timeout: 120_000,
+        env: dbEnv,
+      });
+    } catch {
+      console.log('[db] Schema push failed, retrying with --force-reset…');
+      execSync('npx prisma db push --force-reset --accept-data-loss', {
+        stdio: 'inherit',
+        timeout: 120_000,
+        env: dbEnv,
+      });
+    }
     console.log('[db] Schema synced');
   } catch (err) {
     console.error('[db] Schema sync failed:', err.message);
