@@ -30,8 +30,9 @@ export default async function seed() {
 
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
 
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+
   if (!existing) {
-    const passwordHash = await bcrypt.hash(adminPassword, 10);
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -56,11 +57,12 @@ export default async function seed() {
     await prisma.user.update({
       where: { id: existing.id },
       data: {
+        passwordHash,
         role: 'admin',
         status: 'active',
         emailVerifiedAt: existing.emailVerifiedAt ?? new Date(),
       },
     });
-    console.log(`[seed] Admin already exists: ${adminEmail}`);
+    console.log(`[seed] Admin password and role updated: ${adminEmail}`);
   }
 }
