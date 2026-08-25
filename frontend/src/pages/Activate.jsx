@@ -35,7 +35,7 @@ export default function Activate() {
         method: 'POST',
         body: { email: user.email },
       });
-      setResendMsg(data?.message ?? 'Verification email sent');
+      setResendMsg(data?.emailWarning ?? data?.message ?? 'Verification email sent');
       refreshUser().catch(() => {});
     } catch (err) {
       setResendMsg(err.message ?? 'Could not resend verification email');

@@ -238,16 +238,20 @@ router.post(
     }
 
     const token = await issueVerificationToken(user.email);
+
+    let emailWarning = null;
     try {
       await sendVerificationEmail({ to: user.email, name: user.fullName, token });
     } catch (err) {
+      console.error('[auth] resend-verification email failed:', err.message);
       if (err instanceof MailNotConfiguredError) {
-        throw new AppError('Email service is not configured. Please contact support.', 503);
+        emailWarning = 'Email service is not configured. Please contact support to verify your email.';
+      } else {
+        emailWarning = 'Verification token generated but email could not be sent. Please try again later or contact support.';
       }
-      throw new AppError('Failed to send verification email. Please try again later.', 500);
     }
 
-    res.json({ message: 'Verification email sent' });
+    res.json({ message: 'Verification email sent', ...(emailWarning ? { emailWarning } : {}) });
   }),
 );
 
