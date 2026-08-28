@@ -1,50 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { ShieldCheck, CreditCard, CheckCircle2, Loader2, MailCheck, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ShieldCheck, CreditCard, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira } from '../lib/format.js';
 import { payWithPaystack } from '../lib/paystack.js';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useConfig } from '../context/ConfigContext.jsx';
 
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
 export default function Activate() {
   const { user, refreshUser } = useAuth();
-  const { emailVerificationEnabled } = useConfig();
   const navigate = useNavigate();
-  const location = useLocation();
-  const emailWarning = location.state?.emailWarning ?? null;
 
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [resendMsg, setResendMsg] = useState('');
-
-  // Pick up an email verification done in another tab.
-  useEffect(() => {
-    if (!user?.emailVerified) refreshUser().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleResend = async () => {
-    setResending(true);
-    setResendMsg('');
-    try {
-      const data = await api('/auth/resend-verification', {
-        method: 'POST',
-        body: { email: user.email },
-      });
-      setResendMsg(data?.emailWarning ?? data?.message ?? 'Verification email sent');
-      refreshUser().catch(() => {});
-    } catch (err) {
-      setResendMsg(err.message ?? 'Could not resend verification email');
-    } finally {
-      setResending(false);
-    }
-  };
 
   const handlePay = async () => {
     setError('');
@@ -115,38 +86,6 @@ export default function Activate() {
             <p className="mt-2 text-xs text-white/40">One-time payment · Paystack secured</p>
           </div>
 
-          {emailWarning && (
-            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
-              <div className="flex items-center gap-2 font-medium">
-                <AlertTriangle className="h-4 w-4" />
-                {emailWarning}
-              </div>
-            </div>
-          )}
-
-          {emailVerificationEnabled && !user?.emailVerified && (
-            <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-5 text-sm text-amber-200">
-              <div className="flex items-center gap-2 font-medium">
-                <MailCheck className="h-4 w-4" />
-                Verify your email to activate your account
-              </div>
-              <p className="mt-1 text-xs text-amber-200/70">
-                We sent a verification link to <span className="font-semibold text-amber-100">{user?.email}</span>.
-              </p>
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={resending}
-                className="mt-3 w-full rounded-lg border border-amber-400/40 bg-amber-400/10 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-400/20 disabled:opacity-50"
-              >
-                {resending ? 'Sending...' : 'Resend verification email'}
-              </button>
-              {resendMsg && (
-                <p className="mt-2 text-xs text-amber-200/80">{resendMsg}</p>
-              )}
-            </div>
-          )}
-
           {verified && (
             <div className="mt-5 flex items-center gap-2 rounded-xl bg-neon/10 px-4 py-3 text-sm font-medium text-neon">
               <CheckCircle2 className="h-5 w-5" />
@@ -169,14 +108,10 @@ export default function Activate() {
 
           <button
             onClick={handlePay}
-            disabled={busy || verified || (emailVerificationEnabled && !user?.emailVerified)}
+            disabled={busy || verified}
             className="btn-neon mt-8 w-full"
           >
-            {busy
-              ? 'Opening secure checkout...'
-              : emailVerificationEnabled && !user?.emailVerified
-                ? 'Verify your email to continue'
-                : 'Pay activation fee'}
+            {busy ? 'Opening secure checkout...' : 'Pay activation fee'}
           </button>
 
           <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-white/40">
