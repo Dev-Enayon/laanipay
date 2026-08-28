@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { asyncHandler, AppError } from '../middleware/error.js';
 import { logAudit } from '../lib/audit.js';
-import { computeSummary, computeCharts } from '../lib/adminStats.js';
+import { computeSummary, computeCharts, computeServiceChargeStats, getServiceChargeTransactions } from '../lib/adminStats.js';
 
 const router = Router();
 
@@ -47,6 +47,34 @@ router.get(
     const period = req.query.period ?? 'all';
     const [summary, charts] = await Promise.all([computeSummary(), computeCharts(period)]);
     res.json({ summary, charts });
+  }),
+);
+
+// --- Monthly service charge analytics (admin-only; see router.use above) ---
+
+router.get(
+  '/service-charges',
+  asyncHandler(async (req, res) => {
+    const month = String(req.query.month ?? '').trim();
+    if (month && !/^\d{4}-\d{2}$/.test(month)) {
+      throw new AppError('month must be in YYYY-MM format', 400);
+    }
+    const stats = await computeServiceChargeStats(month);
+    res.json(stats);
+  }),
+);
+
+router.get(
+  '/service-charges/transactions',
+  asyncHandler(async (req, res) => {
+    const month = String(req.query.month ?? '').trim();
+    if (month && !/^\d{4}-\d{2}$/.test(month)) {
+      throw new AppError('month must be in YYYY-MM format', 400);
+    }
+    const page = num(req.query.page, 1);
+    const pageSize = num(req.query.pageSize, 50);
+    const data = await getServiceChargeTransactions(month, page, pageSize);
+    res.json(data);
   }),
 );
 

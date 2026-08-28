@@ -3,9 +3,181 @@
 
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { env } from '../config/env.js';
+import { billingMonthFor } from './serviceCharge.js';
 
 const PERIOD_DAYS = { today: 1, '7d': 7, '30d': 30, '3m': 90, '6m': 180, '1y': 365 };
 const DEPOSIT_TYPES = ['deposit', 'contribution', 'bonus'];
+
+// Statuses that represent money successfully collected from a user's wallet and
+// recorded in the ledger. Anything else (failed, insufficient_funds, pending)
+// is NOT counted toward collected revenue.
+const COLLECTED_STATUS = 'collected';
+const FAILED_STATUSES = ['failed', 'insufficient_funds'];
+
+// Eligible to be billed for the monthly service charge: activated, not
+// suspended, and in possession of a wallet.
+function eligibleWhere() {
+  return {
+    activationStatus: true,
+    status: { not: 'suspended' },
+    wallet: { isNot: null },
+  };
+}
+
+export function serviceChargeEligibleCount() {
+  return prisma.user.count({ where: eligibleWhere() });
+}
+
+// Aggregated, per-status totals for a single billing month, derived directly
+// from the service_charges table (the source of truth). Never computed as
+// `users x fee`; only real transaction records count.
+export async function computeServiceChargeStats(billingMonth) {
+  const month = (billingMonth || billingMonthFor()).trim();
+
+  const [eligible, byStatus, chargedUsers, historyRows] = await Promise.all([
+    prisma.user.count({ where: eligibleWhere() }),
+    prisma.serviceCharge.groupBy({
+      by: ['status'],
+      where: { billingMonth: month },
+      _count: { _all: true },
+      _sum: { amountKobo: true },
+    }),
+    prisma.serviceCharge.count({
+      where: { billingMonth: month },
+      distinct: ['userId'],
+    }),
+    prisma.serviceCharge.groupBy({
+      by: ['billingMonth', 'status'],
+      _count: { _all: true },
+      _sum: { amountKobo: true },
+      orderBy: { billingMonth: 'desc' },
+    }),
+  ]);
+
+  const statusMap = Object.fromEntries(
+    byStatus.map((r) => [r.status, { count: r._count._all, amount: r._sum.amountKobo ?? 0 }]),
+  );
+  const pick = (key) => statusMap[key] ?? { count: 0, amount: 0 };
+
+  const collected = pick(COLLECTED_STATUS);
+  const insufficient = pick('insufficient_funds');
+  const failed = pick('failed');
+  const pending = pick('pending');
+
+  const totalCollected = collected.amount; // only 'collected' counts
+  const usersCharged = collected.count; // one row per user per month (unique constraint)
+  const notCharged = Math.max(0, eligible - chargedUsers);
+  const failedTotal = failed.count + insufficient.count;
+
+  const historyMap = new Map();
+  for (const r of historyRows) {
+    const m = r.billingMonth;
+    if (!historyMap.has(m)) {
+      historyMap.set(m, {
+        month: m,
+        usersCharged: 0,
+        totalCollected: 0,
+        failed: 0,
+        insufficient: 0,
+        pending: 0,
+      });
+    }
+    const rec = historyMap.get(m);
+    if (r.status === COLLECTED_STATUS) {
+      rec.usersCharged = r._count._all;
+      rec.totalCollected = r._sum.amountKobo ?? 0;
+    } else if (r.status === 'insufficient_funds') {
+      rec.insufficient = r._count._all;
+    } else if (r.status === 'failed') {
+      rec.failed = r._count._all;
+    } else if (r.status === 'pending') {
+      rec.pending = r._count._all;
+    }
+  }
+  for (const rec of historyMap.values()) {
+    rec.failed = rec.failed + rec.insufficient;
+  }
+  const history = Array.from(historyMap.values());
+
+  return {
+    monthlyFeeKobo: env.serviceChargeKobo,
+    month,
+    eligible,
+    summary: {
+      totalCollected,
+      usersCharged,
+      pending: pending.count,
+      failed: failedTotal,
+      insufficient: insufficient.count,
+      notCharged,
+    },
+    history,
+  };
+}
+
+// Paginated individual service-charge transactions for a billing month.
+export async function getServiceChargeTransactions(billingMonth, page = 1, pageSize = 50) {
+  const month = (billingMonth || billingMonthFor()).trim();
+  const take = Math.min(100, Math.max(1, pageSize));
+  const skip = (Math.max(1, page) - 1) * take;
+
+  const [total, charges] = await Promise.all([
+    prisma.serviceCharge.count({ where: { billingMonth: month } }),
+    prisma.serviceCharge.findMany({
+      where: { billingMonth: month },
+      orderBy: { collectedAt: 'desc' },
+      skip,
+      take,
+      select: {
+        id: true,
+        userId: true,
+        amountKobo: true,
+        status: true,
+        failureReason: true,
+        paystackReference: true,
+        paystackStatus: true,
+        walletTransactionId: true,
+        companyLedgerId: true,
+        collectedAt: true,
+        user: { select: { id: true, fullName: true, email: true } },
+      },
+    }),
+  ]);
+
+  const walletTxnIds = charges
+    .map((c) => c.walletTransactionId)
+    .filter((id) => !!id);
+  const walletTxns = walletTxnIds.length
+    ? await prisma.walletTransaction.findMany({
+        where: { id: { in: walletTxnIds } },
+        select: { id: true, reference: true, description: true, status: true },
+      })
+    : [];
+  const walletTxnMap = Object.fromEntries(walletTxns.map((w) => [w.id, w]));
+
+  return {
+    month,
+    total,
+    page: Math.max(1, page),
+    pageSize: take,
+    transactions: charges.map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      user: c.user?.fullName ?? null,
+      email: c.user?.email ?? null,
+      amountKobo: c.amountKobo,
+      status: c.status,
+      failureReason: c.failureReason,
+      paystackReference: c.paystackReference,
+      paystackStatus: c.paystackStatus,
+      walletTransactionId: c.walletTransactionId,
+      walletReference: walletTxnMap[c.walletTransactionId]?.reference ?? null,
+      companyLedgerId: c.companyLedgerId,
+      collectedAt: c.collectedAt,
+    })),
+  };
+}
 
 export function periodRange(period) {
   const end = new Date();

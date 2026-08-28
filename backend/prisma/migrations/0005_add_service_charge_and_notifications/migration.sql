@@ -32,7 +32,7 @@ CREATE TABLE "notifications" (
 
 -- Unique constraint: a user can only be charged once per billing month
 CREATE UNIQUE INDEX "service_charges_user_id_billing_month_key" ON "service_charges"("user_id", "billing_month");
-CREATE INDEX "service_charges_billing_month_idx" ON "service_charges"("billing_month");
+CREATE INDEX "service_charges_billing_month_status_idx" ON "service_charges"("billing_month", "status");
 CREATE INDEX "service_charges_status_idx" ON "service_charges"("status");
 CREATE INDEX "service_charges_user_id_idx" ON "service_charges"("user_id");
 

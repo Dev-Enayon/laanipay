@@ -15,6 +15,7 @@ import {
 import { api } from '../../lib/api.js';
 import { naira } from '../../lib/format.js';
 import { AreaSeries, ChartCard, chartData, CHART_COLORS } from './AdminChart.jsx';
+import AdminServiceCharge from './AdminServiceCharge.jsx';
 
 const PERIODS = ['today', '7d', '30d', '3m', '6m', '1y', 'all'];
 
@@ -149,6 +150,8 @@ export default function AdminOverview() {
           <AreaSeries data={chartData(c.walletBalanceGrowth.points)} color={CHART_COLORS.walletBalance} />
         </ChartCard>
       </div>
+
+      <AdminServiceCharge />
     </div>
   );
 }

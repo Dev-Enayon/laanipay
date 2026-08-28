@@ -228,7 +228,7 @@ model ServiceCharge {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, billingMonth])
-  @@index([billingMonth])
+  @@index([billingMonth, status])
   @@index([status])
   @@index([userId])
   @@map("service_charges")
