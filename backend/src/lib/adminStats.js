@@ -43,10 +43,16 @@ export async function computeServiceChargeStats(billingMonth) {
       _count: { _all: true },
       _sum: { amountKobo: true },
     }),
-    prisma.serviceCharge.count({
-      where: { billingMonth: month },
-      distinct: ['userId'],
-    }),
+    // Distinct users charged this month. `count()` has no `distinct` arg (Prisma
+    // removes it from CountArgs -> would throw PrismaClientValidationError), so
+    // group by userId and count the groups instead.
+    prisma.serviceCharge
+      .groupBy({
+        by: ['userId'],
+        where: { billingMonth: month },
+        _count: { _all: true },
+      })
+      .then((rows) => rows.length),
     prisma.serviceCharge.groupBy({
       by: ['billingMonth', 'status'],
       _count: { _all: true },
