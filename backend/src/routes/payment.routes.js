@@ -16,7 +16,7 @@ router.post(
     if (req.user.activationStatus) {
       throw new AppError('Account is already activated', 409);
     }
-    if (!req.user.emailVerifiedAt) {
+    if (env.emailVerificationEnabled && !req.user.emailVerifiedAt) {
       throw new AppError('Please verify your email address before activating your account', 403);
     }
 

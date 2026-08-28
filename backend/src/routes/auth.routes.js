@@ -126,15 +126,17 @@ router.post(
     const tokens = issueTokenPair(user.id);
 
     let emailWarning = null;
-    try {
-      const token = await issueVerificationToken(normalizedEmail);
-      await sendVerificationEmail({ to: normalizedEmail, name, token });
-    } catch (err) {
-      console.error('[auth] failed to issue/send verification email:', err.message);
-      if (err instanceof MailNotConfiguredError) {
-        emailWarning = 'Email service is not configured. Please ask support to verify your email.';
-      } else {
-        emailWarning = 'We could not send a verification email. Please use "Resend verification" on the activation page.';
+    if (env.emailVerificationEnabled) {
+      try {
+        const token = await issueVerificationToken(normalizedEmail);
+        await sendVerificationEmail({ to: normalizedEmail, name, token });
+      } catch (err) {
+        console.error('[auth] failed to issue/send verification email:', err.message);
+        if (err instanceof MailNotConfiguredError) {
+          emailWarning = 'Email service is not configured. Please ask support to verify your email.';
+        } else {
+          emailWarning = 'We could not send a verification email. Please use "Resend verification" on the activation page.';
+        }
       }
     }
 
@@ -191,6 +193,9 @@ router.post(
   '/verify-email',
   asyncHandler(async (req, res) => {
     const { token } = req.body ?? {};
+    if (!env.emailVerificationEnabled) {
+      return res.json({ message: 'Email verification is currently disabled' });
+    }
     if (typeof token !== 'string' || !token) {
       throw new AppError('Verification token is required', 400);
     }
@@ -223,6 +228,9 @@ router.post(
   '/resend-verification',
   verifyLimiter,
   asyncHandler(async (req, res) => {
+    if (!env.emailVerificationEnabled) {
+      return res.json({ message: 'Email verification is currently disabled' });
+    }
     const { email } = req.body ?? {};
     const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
     if (!normalizedEmail || !EMAIL_REGEX.test(normalizedEmail)) {

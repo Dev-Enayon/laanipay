@@ -5,11 +5,13 @@ import { api } from '../lib/api.js';
 import { naira } from '../lib/format.js';
 import { payWithPaystack } from '../lib/paystack.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useConfig } from '../context/ConfigContext.jsx';
 
 const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
 
 export default function Activate() {
   const { user, refreshUser } = useAuth();
+  const { emailVerificationEnabled } = useConfig();
   const navigate = useNavigate();
   const location = useLocation();
   const emailWarning = location.state?.emailWarning ?? null;
@@ -122,7 +124,7 @@ export default function Activate() {
             </div>
           )}
 
-          {!user?.emailVerified && (
+          {emailVerificationEnabled && !user?.emailVerified && (
             <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-5 text-sm text-amber-200">
               <div className="flex items-center gap-2 font-medium">
                 <MailCheck className="h-4 w-4" />
@@ -167,14 +169,14 @@ export default function Activate() {
 
           <button
             onClick={handlePay}
-            disabled={busy || verified || !user?.emailVerified}
+            disabled={busy || verified || (emailVerificationEnabled && !user?.emailVerified)}
             className="btn-neon mt-8 w-full"
           >
             {busy
               ? 'Opening secure checkout...'
-              : user?.emailVerified
-                ? 'Pay activation fee'
-                : 'Verify your email to continue'}
+              : emailVerificationEnabled && !user?.emailVerified
+                ? 'Verify your email to continue'
+                : 'Pay activation fee'}
           </button>
 
           <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-white/40">

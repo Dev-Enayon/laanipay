@@ -25,6 +25,8 @@ export const env = {
       .split(',')
       .map((origin) => origin.trim()),
   ],
+  emailVerificationEnabled:
+    (process.env.EMAIL_VERIFICATION_ENABLED ?? 'true').toLowerCase() === 'true',
   activationFeeKobo: 150000,
   bcryptRounds: 10,
 };

@@ -43,6 +43,13 @@ export function createApp() {
     res.json({ status: 'ok', service: 'laanipay-api', uptime: process.uptime() });
   });
 
+  app.get('/api/config', (req, res) => {
+    res.json({
+      emailVerificationEnabled: env.emailVerificationEnabled,
+      activationFeeKobo: env.activationFeeKobo,
+    });
+  });
+
   app.get('/health/ready', async (req, res) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
