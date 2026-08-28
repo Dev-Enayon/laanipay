@@ -39,7 +39,8 @@ export default function Signup() {
 
     setSubmitting(true);
     try {
-      const { fullName, email, phone, password, referralCode } = form;
+      const { fullName, email, phone, password } = form;
+      const referralCode = form.referralCode.trim();
       const result = await signup({ fullName, email, phone, password, referralCode });
       navigate('/activate', { replace: true, state: result.emailWarning ? { emailWarning: result.emailWarning } : undefined });
     } catch (err) {

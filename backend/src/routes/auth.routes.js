@@ -84,7 +84,15 @@ router.post(
     if (code) {
       referrer = await prisma.user.findUnique({ where: { referralCode: code } });
       if (!referrer) {
+        referrer = await prisma.user.findFirst({
+          where: { referralCode: { equals: code, mode: 'insensitive' } },
+        });
+      }
+      if (!referrer) {
         throw new AppError('Invalid referral code', 400);
+      }
+      if (referrer.email === normalizedEmail) {
+        throw new AppError('You cannot use your own referral code', 400);
       }
     }
 

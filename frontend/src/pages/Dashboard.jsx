@@ -59,8 +59,8 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
               <Share2 className="h-4 w-4 text-primary" /> Your referral code
             </div>
-            <p className="mt-2 font-mono text-2xl font-extrabold tracking-wider text-primary">
-              {user?.referralCode?.slice(0, 8)}
+            <p className="mt-2 font-mono text-2xl font-extrabold tracking-wider text-primary break-all">
+              {user?.referralCode}
             </p>
             <p className="mt-1 text-xs text-slate-400">Share it with friends to start earning</p>
           </div>
