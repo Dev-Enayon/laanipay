@@ -43,6 +43,8 @@ model User {
   targetLogs               AuditLog[] @relation("TargetedUser")
   walletTransactions       WalletTransaction[]
   companyLedger            CompanyLedger[]
+  serviceCharges           ServiceCharge[]
+  notifications            Notification[]
 
   @@index([status])
   @@map("users")
@@ -201,4 +203,50 @@ model CompanyLedger {
 
   @@index([createdAt])
   @@map("company_ledger")
+}
+
+// Monthly ₦500 service charge deducted from each eligible user's wallet.
+// One row per user per billing month (billingMonth = 'YYYY-MM'), unique
+// constraint guarantees a user can never be charged twice for the same month.
+model ServiceCharge {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  amountKobo   Int      @map("amount_kobo")
+  currency     String   @default("NGN")
+  billingMonth String   @map("billing_month") // 'YYYY-MM'
+  status       String   @default("collected") // collected | insufficient_funds | failed
+  failureReason String? @map("failure_reason")
+  walletTransactionId String? @map("wallet_transaction_id")
+  creditedTo    String?  @map("credited_to") // admin user id the ₦500 is credited to
+  companyLedgerId String? @map("company_ledger_id")
+  // Paystack where applicable: reference is null because settlement is
+  // internal (platform wallet); kept for future external-transfer support.
+  paystackReference String? @map("paystack_reference")
+  paystackStatus    String? @map("paystack_status")
+  collectedAt DateTime @default(now()) @map("collected_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, billingMonth])
+  @@index([billingMonth])
+  @@index([status])
+  @@index([userId])
+  @@map("service_charges")
+}
+
+// In-app notification shown on the user dashboard.
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  body      String
+  type      String   @default("info") // info | success | error
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("notifications")
 }

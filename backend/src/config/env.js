@@ -28,6 +28,11 @@ export const env = {
   emailVerificationEnabled:
     (process.env.EMAIL_VERIFICATION_ENABLED ?? 'true').toLowerCase() === 'true',
   activationFeeKobo: 150000,
+  serviceChargeKobo: 50000, // ₦500 monthly service charge
+  serviceChargeCurrency: 'NGN',
+  serviceChargeCron: process.env.SERVICE_CHARGE_CRON ?? '0 0 1 * *', // 1st of month, midnight
+  serviceChargeEnabled: (process.env.SERVICE_CHARGE_ENABLED ?? 'false').toLowerCase() === 'true',
+  adminEmail: (process.env.ADMIN_EMAIL ?? 'admin@laanipay.ng').trim().toLowerCase(),
   bcryptRounds: 10,
 };
 

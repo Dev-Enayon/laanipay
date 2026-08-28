@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
 import seed from './seed-runner.js';
+import { startServiceChargeScheduler } from './lib/scheduler.js';
 
 if (env.nodeEnv === 'production' && env.databaseUrl) {
   const dbEnv = { ...process.env, DATABASE_URL: env.databaseUrl };
@@ -39,6 +40,8 @@ const server = app.listen(env.port, () => {
 seed()
   .then(() => console.log('[seed] Done'))
   .catch((err) => console.error('[seed] Failed:', err.message ?? err));
+
+startServiceChargeScheduler();
 
 // The Neon serverless driver can emit unhandled WebSocket 'error' events on
 // transient network hiccups. Node treats those as fatal by default and kills

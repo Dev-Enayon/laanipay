@@ -39,6 +39,7 @@ export async function computeSummary() {
     walletAgg,
     contributions,
     activationRevenue,
+    serviceChargeRevenue,
     bonusPayouts,
     expenses,
     txDeposits,
@@ -53,6 +54,10 @@ export async function computeSummary() {
     }),
     prisma.activationPayment.aggregate({
       where: { status: 'verified' },
+      _sum: { amount: true },
+    }),
+    prisma.companyLedger.aggregate({
+      where: { type: 'service_charge' },
       _sum: { amount: true },
     }),
     prisma.mlmReferral.aggregate({ _sum: { bonusEarned: true } }),
@@ -71,7 +76,7 @@ export async function computeSummary() {
 
   const totalDeposits = txDeposits._sum.amount ?? 0;
   const totalWithdrawals = txWithdrawals._sum.amount ?? 0;
-  const revenue = activationRevenue._sum.amount ?? 0;
+  const revenue = (activationRevenue._sum.amount ?? 0) + (serviceChargeRevenue._sum.amount ?? 0);
   const bonuses = bonusPayouts._sum.bonusEarned ?? 0;
   const totalExpenses = expenses._sum.amount ?? 0;
   const profit = revenue - bonuses - totalExpenses;
