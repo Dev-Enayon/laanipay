@@ -16,9 +16,6 @@ router.post(
     if (req.user.activationStatus) {
       throw new AppError('Account is already activated', 409);
     }
-    if (env.emailVerificationEnabled && !req.user.emailVerifiedAt) {
-      throw new AppError('Please verify your email address before activating your account', 403);
-    }
 
     const payment = await prisma.$transaction(async (tx) => {
       await tx.activationPayment.updateMany({
