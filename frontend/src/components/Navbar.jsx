@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck, Bell } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { api } from '../lib/api.js';
 
 const linkClass = ({ isActive }) =>
   `px-3 py-2 text-sm font-medium transition-colors ${
@@ -19,6 +20,7 @@ export default function Navbar() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -26,6 +28,25 @@ export default function Navbar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setUnread(0);
+      return;
+    }
+    let active = true;
+    const fetchUnread = () =>
+      api('/notifications/unread-count')
+        .then((d) => active && setUnread(d.count ?? 0))
+        .catch(() => {});
+    fetchUnread();
+    const onUpdated = () => fetchUnread();
+    window.addEventListener('laani:notifications-updated', onUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener('laani:notifications-updated', onUpdated);
+    };
+  }, [user]);
 
   const isLanding = location.pathname === '/';
   const onDark = isLanding && !scrolled;
@@ -119,6 +140,20 @@ export default function Navbar() {
           )}
           {links}
           {user && (
+            <Link
+              to="/notifications"
+              className={`relative ml-1 inline-flex items-center px-2 py-2 transition-colors ${onDark ? 'text-white/80 hover:text-neon' : 'text-slate-600 hover:text-primary'}`}
+              title="Notifications"
+            >
+              <Bell className="h-5 w-5" />
+              {unread > 0 && (
+                <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </Link>
+          )}
+          {user && (
             <button
               onClick={handleLogout}
               className="ml-2 inline-flex items-center gap-1.5 rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-red-300 hover:text-red-500"
@@ -170,6 +205,12 @@ export default function Navbar() {
                   </Link>
                 </>
               )
+            )}
+            {user && user.activationStatus && (
+              <Link to="/notifications" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                <Bell className="h-4 w-4" /> Notifications
+                {unread > 0 && <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{unread}</span>}
+              </Link>
             )}
             {user && !user.activationStatus && (
               <Link to="/activate" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">

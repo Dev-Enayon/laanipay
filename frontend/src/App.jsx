@@ -19,12 +19,14 @@ const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Wallet = lazy(() => import('./pages/Wallet.jsx'));
 const Mlm = lazy(() => import('./pages/Mlm.jsx'));
 const Contribution = lazy(() => import('./pages/Contribution.jsx'));
+const Notifications = lazy(() => import('./pages/Notifications.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout.jsx'));
 const AdminOverview = lazy(() => import('./pages/admin/AdminOverview.jsx'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
 const AdminUserDetail = lazy(() => import('./pages/admin/AdminUserDetail.jsx'));
 const AdminAudit = lazy(() => import('./pages/admin/AdminAudit.jsx'));
+const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications.jsx'));
 
 export default function App() {
   return (
@@ -91,6 +93,14 @@ export default function App() {
               }
             />
             <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <Notifications />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin"
               element={
                 <AdminRoute>
@@ -102,6 +112,7 @@ export default function App() {
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetail />} />
               <Route path="audit" element={<AdminAudit />} />
+              <Route path="notifications" element={<AdminNotifications />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

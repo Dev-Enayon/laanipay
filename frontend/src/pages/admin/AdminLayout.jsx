@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Users, ScrollText, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Users, ScrollText, ShieldCheck, Bell } from 'lucide-react';
 
 const tabs = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/notifications', label: 'Notifications', icon: Bell },
   { to: '/admin/audit', label: 'Audit Logs', icon: ScrollText },
 ];
 

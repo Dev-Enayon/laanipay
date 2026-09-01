@@ -44,7 +44,9 @@ model User {
   walletTransactions       WalletTransaction[]
   companyLedger            CompanyLedger[]
   serviceCharges           ServiceCharge[]
-  notifications            Notification[]
+  notifications            Notification[] @relation("DirectUserNotifications")
+  sentNotifications        Notification[] @relation("SentNotifications")
+  notificationReceipts     NotificationReceipt[]
 
   @@index([status])
   @@map("users")
@@ -234,19 +236,58 @@ model ServiceCharge {
   @@map("service_charges")
 }
 
-// In-app notification shown on the user dashboard.
+// In-app notification. Two shapes share one table:
+//  1. Direct user notifications (system/service-charge messages) — `userId` set.
+//  2. Admin broadcast messages — `userId` null, `recipientType`/`recipientIds`
+//     describe targeting, and per-user read/dismiss state lives in
+//     `NotificationReceipt`.
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  title     String
-  body      String
-  type      String   @default("info") // info | success | error
-  readAt    DateTime? @map("read_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id             String    @id @default(cuid())
+  userId         String?   @map("user_id") // set for direct (system/service-charge) notifications
+  title          String
+  body           String
+  type           String    @default("info") // info | success | error — severity (existing UI)
+  category       String?   @map("category") // announcement | system | reminder | promotion | alert
+  senderId       String?   @map("sender_id") // admin who created/sent it
+  recipientType  String?   @map("recipient_type") // all | role | selected | specific | null(direct)
+  recipientIds   Json?     @map("recipient_ids") // array of user ids for selected/specific
+  recipientRole  String?   @map("recipient_role") // role target for role-based sends
+  recipientCount Int       @default(0) @map("recipient_count") // resolved recipients at send time
+  status         String    @default("sent") // scheduled | sent | failed | cancelled
+  scheduledAt    DateTime? @map("scheduled_at")
+  sentAt         DateTime? @map("sent_at")
+  pushStatus     String?   @map("push_status") // pending | sent | failed | not_configured (future push)
+  readAt         DateTime? @map("read_at") // direct-user read mark (broadcast uses receipts)
+  dismissedAt    DateTime? @map("dismissed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User?  @relation("DirectUserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  sender   User?  @relation("SentNotifications", fields: [senderId], references: [id], onDelete: SetNull)
+  receipts NotificationReceipt[]
 
   @@index([userId])
+  @@index([senderId])
+  @@index([status])
+  @@index([scheduledAt])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// Per-recipient read/dismiss/delivery state for broadcast notifications.
+model NotificationReceipt {
+  id             String    @id @default(cuid())
+  notificationId String    @map("notification_id")
+  userId         String    @map("user_id")
+  readAt         DateTime? @map("read_at")
+  dismissedAt    DateTime? @map("dismissed_at")
+  deliveredAt    DateTime? @map("delivered_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, userId])
+  @@index([userId])
+  @@index([notificationId])
+  @@map("notification_receipts")
 }
