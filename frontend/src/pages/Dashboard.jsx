@@ -9,6 +9,7 @@ import {
   Receipt,
   Bell,
   CalendarClock,
+  CalendarDays,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { nairaCompact, formatDate, initials } from '../lib/format.js';
@@ -137,22 +138,39 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="relative mt-4 flex items-center gap-3 rounded-2xl border border-neon/30 bg-neon/5 p-4 text-sm">
-          <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
-          <div className="flex-1">
-            <p className="font-bold text-slate-900">Monthly Service Charge: ₦500</p>
-            <p className="text-xs text-slate-500">
-              A ₦500 service charge is deducted from your wallet monthly
-              {sc?.nextChargeDate ? ` · Next on ${formatDate(sc?.nextChargeDate)}` : ''}.
+        <div className="relative mt-4 overflow-hidden rounded-2xl border border-neon/30 bg-neon/5 p-5 text-sm md:px-6 md:py-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="flex min-w-0 items-center gap-2.5 font-bold text-slate-900">
+              <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
+              <span className="truncate">Monthly Service Charge</span>
             </p>
+            <span className="shrink-0 text-xl font-extrabold tracking-tight text-emerald-700">₦500</span>
           </div>
-          <div className="text-right text-xs text-slate-400">
-            <span className="flex items-center justify-end gap-1">
-              <CalendarClock className="h-3.5 w-3.5" /> {sc?.currentMonthStatus === 'collected' ? 'Paid this month' : 'This month'}{' '}
-              {sc?.currentMonth}
+
+          <p className="mt-3 max-w-xl leading-relaxed text-slate-500">
+            A ₦500 service charge is deducted from your wallet monthly.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8 md:mt-3">
+            {sc?.nextChargeDate && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                <CalendarClock className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                Next on {formatDate(sc.nextChargeDate)}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+              <CalendarDays className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              This month:
+              {sc?.currentMonthStatus === 'collected' ? (
+                <span className="font-semibold text-emerald-600"> {sc?.currentMonth} (paid)</span>
+              ) : (
+                <> {sc?.currentMonth}</>
+              )}
             </span>
             {sc?.currentMonthStatus === 'insufficient_funds' && (
-              <span className="font-semibold text-red-500">Balance insufficient</span>
+              <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-lg bg-red-50 px-2.5 py-1 text-[11px] font-bold text-red-600 sm:mt-0">
+                Balance insufficient
+              </span>
             )}
           </div>
         </div>
