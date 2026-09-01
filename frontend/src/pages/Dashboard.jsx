@@ -38,25 +38,25 @@ export default function Dashboard() {
 
   return (
     <div className="container-lp pt-28 pb-16">
-      <div className="card-light relative overflow-hidden p-8">
+      <div className="card-light relative overflow-hidden p-5 sm:p-8">
         <div className="hero-gradient absolute inset-0 opacity-10" />
-        <div className="relative flex items-center gap-5">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-neon text-xl font-extrabold text-white">
+        <div className="relative flex flex-wrap items-center gap-4 sm:gap-5">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-neon text-lg font-extrabold text-white sm:h-16 sm:w-16 sm:text-xl">
             {initials(user?.fullName)}
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
               {greeting}, {user?.fullName?.split(' ')[0]} 👋
             </h1>
             <p className="mt-1 flex items-center gap-1.5 text-sm text-emerald-600">
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4 shrink-0" />
               Account activated — welcome to the ecosystem.
             </p>
           </div>
           {sc && (
             <button
               onClick={() => setShowNotifications((v) => !v)}
-              className="relative ml-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              className="relative ml-auto inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
             >
               <Bell className="h-4 w-4 text-primary" /> Notifications
               {pendingNotifications.length > 0 && (
@@ -211,11 +211,11 @@ export default function Dashboard() {
       <h2 className="mt-12 text-lg font-bold text-slate-900">Choose your platform</h2>
       <div className="mt-5 grid gap-6 md:grid-cols-2">
         <Link to="/mlm" className="group block">
-          <div className="card-light h-full p-8 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-glow">
-            <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 transition-colors group-hover:bg-primary">
-              <Network className="h-7 w-7 text-primary transition-colors group-hover:text-white" />
+          <div className="card-light h-full p-6 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-glow sm:p-8">
+            <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 transition-colors group-hover:bg-primary sm:h-14 sm:w-14">
+              <Network className="h-6 w-6 text-primary transition-colors group-hover:text-white sm:h-7 sm:w-7" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">MLM Platform</h3>
+            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">MLM Platform</h3>
             <p className="mt-2 text-sm text-slate-600">
               Build your team, earn referral bonuses across 3 levels and climb from Marketer to
               Diamond Director.
@@ -227,11 +227,11 @@ export default function Dashboard() {
         </Link>
 
         <Link to="/contribution" className="group block">
-          <div className="card-light h-full p-8 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-neon">
-            <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-neon/15 transition-colors group-hover:bg-neon">
-              <PiggyBank className="h-7 w-7 text-emerald-600 transition-colors group-hover:text-ink" />
+          <div className="card-light h-full p-6 transition-all duration-300 group-hover:-translate-y-1.5 group-hover:shadow-neon sm:p-8">
+            <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-neon/15 transition-colors group-hover:bg-neon sm:h-14 sm:w-14">
+              <PiggyBank className="h-6 w-6 text-emerald-600 transition-colors group-hover:text-ink sm:h-7 sm:w-7" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Contribution Platform</h3>
+            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Contribution Platform</h3>
             <p className="mt-2 text-sm text-slate-600">
               Pick a monthly plan from ₦1,000 and build disciplined community savings with live
               progress tracking.

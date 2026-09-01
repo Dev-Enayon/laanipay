@@ -174,51 +174,53 @@ export default function Navbar() {
       </nav>
 
       {open && (
-        <div className="border-t border-slate-200 bg-white px-6 py-4 shadow-xl md:hidden">
-          <div className="flex flex-col gap-2">
+        <div className="border-t border-slate-200 bg-white shadow-xl md:hidden">
+          <div className="max-h-[calc(100dvh-4rem)] flex flex-col gap-1 overflow-y-auto px-5 py-4">
             {!user && (
-              <Link to="/" onClick={() => setOpen(false)} className="py-2 text-sm font-medium text-slate-700">
+              <Link to="/" onClick={() => setOpen(false)} className="rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 Home
               </Link>
             )}
-            <a href="/#about" onClick={() => setOpen(false)} className="py-2 text-sm font-medium text-slate-700">
+            <a href="/#about" onClick={() => setOpen(false)} className="rounded-xl px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
               About
             </a>
             {user?.role === 'admin' ? (
-              <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+              <Link to="/admin" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 <ShieldCheck className="h-4 w-4" /> Admin Dashboard
               </Link>
             ) : (
               user?.activationStatus && (
                 <>
-                  <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                  <Link to="/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <LayoutDashboard className="h-4 w-4" /> Dashboard
                   </Link>
-                  <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                  <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Wallet className="h-4 w-4" /> Wallet
                   </Link>
-                  <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                  <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Network className="h-4 w-4" /> MLM Platform
                   </Link>
-                  <Link to="/contribution" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+                  <Link to="/contribution" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <PiggyBank className="h-4 w-4" /> Contribution
                   </Link>
                 </>
               )
             )}
             {user && user.activationStatus && (
-              <Link to="/notifications" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
-                <Bell className="h-4 w-4" /> Notifications
-                {unread > 0 && <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{unread}</span>}
+              <Link to="/notifications" onClick={() => setOpen(false)} className="flex items-center justify-between rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <span className="flex items-center gap-3">
+                  <Bell className="h-4 w-4" /> Notifications
+                </span>
+                {unread > 0 && <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white">{unread}</span>}
               </Link>
             )}
             {user && !user.activationStatus && (
-              <Link to="/activate" onClick={() => setOpen(false)} className="flex items-center gap-2 py-2 text-sm font-medium text-slate-700">
+              <Link to="/activate" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 <Sparkles className="h-4 w-4" /> Activate Account
               </Link>
             )}
             {!user && (
-              <Link to="/login" onClick={() => setOpen(false)} className="py-2 text-sm font-medium text-slate-700">
+              <Link to="/login" onClick={() => setOpen(false)} className="rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 Login
               </Link>
             )}
@@ -226,7 +228,7 @@ export default function Navbar() {
               <Link
                 to="/signup"
                 onClick={() => setOpen(false)}
-                className="mt-2 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white"
+                className="mt-1 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-dark"
               >
                 Sign Up
               </Link>
@@ -237,7 +239,7 @@ export default function Navbar() {
                   setOpen(false);
                   handleLogout();
                 }}
-                className="mt-2 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-600"
+                className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-600 transition hover:border-red-300 hover:text-red-500"
               >
                 <LogOut className="h-4 w-4" /> Logout
               </button>

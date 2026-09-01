@@ -224,7 +224,7 @@ export default function Mlm() {
               <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
               <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-neon/10 blur-3xl" />
 
-              <div className="relative flex items-center gap-2">
+              <div className="relative flex flex-wrap items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-neon/15">
                   <Award className="h-4 w-4 text-neon" />
                 </span>
@@ -255,7 +255,7 @@ export default function Mlm() {
                   return (
                     <div
                       key={rank.key}
-                      className={`flex items-center justify-between rounded-xl border px-4 py-3.5 transition-all ${
+                      className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-3.5 transition-all sm:px-4 ${
                         isCurrent
                           ? 'border-neon/40 bg-white/10 shadow-neon'
                           : achieved
@@ -263,27 +263,27 @@ export default function Mlm() {
                             : 'border-white/5 bg-transparent'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex items-center gap-3">
                         <span
-                          className={`flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${
                             tier.gem
                           } ${achieved ? '' : 'opacity-30 grayscale'}`}
                         >
                           <Award className="h-4 w-4 text-ink" />
                         </span>
-                        <div>
-                          <p className={`font-display text-base font-semibold tracking-tight ${achieved ? tier.text : 'text-white/35'}`}>
+                        <div className="min-w-0">
+                          <p className={`truncate font-display text-base font-semibold tracking-tight ${achieved ? tier.text : 'text-white/35'}`}>
                             {rank.label}
                           </p>
                           <p className="text-[11px] text-white/40">{rank.minDirect}+ direct activated</p>
                         </div>
                         {isCurrent && (
-                          <span className="rounded-full bg-neon px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink">
+                          <span className="shrink-0 rounded-full bg-neon px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-ink">
                             Current
                           </span>
                         )}
                       </div>
-                      <span className={`text-xs font-semibold ${achieved ? `rounded-full border px-2.5 py-1 ${tier.chip}` : 'text-white/25'}`}>
+                      <span className={`shrink-0 text-xs font-semibold ${achieved ? `rounded-full border px-2.5 py-1 ${tier.chip}` : 'text-white/25'}`}>
                         {rank.minDirect}+ direct
                       </span>
                     </div>
@@ -317,7 +317,8 @@ export default function Mlm() {
                 </div>
               ) : (
                 <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white">
-                  <table className="w-full text-left text-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
                         <th className="px-5 py-3">Member</th>
@@ -329,31 +330,32 @@ export default function Mlm() {
                     </thead>
                     <tbody>
                       {overview.downline.map((member) => (
-                        <tr key={member.id} className="border-b border-slate-50 last:border-0">
-                          <td className="px-5 py-3">
-                            <p className="font-medium text-slate-800">{member.fullName}</p>
-                            <p className="text-xs text-slate-400">{member.email}</p>
-                          </td>
-                          <td className="px-5 py-3 text-slate-600">Level {member.level}</td>
-                          <td className="px-5 py-3">
-                            {member.activationStatus ? (
-                              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
-                                Active
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
-                                Pending activation
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3 text-slate-600">{formatDate(member.joinedAt)}</td>
-                          <td className="px-5 py-3 font-semibold text-emerald-600">
-                            {naira(member.bonusEarned)}
-                          </td>
-                        </tr>
-                      ))}
+                    <tr key={member.id} className="border-b border-slate-50 last:border-0">
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <p className="font-medium text-slate-800">{member.fullName}</p>
+                        <p className="text-xs text-slate-400">{member.email}</p>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">Level {member.level}</td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        {member.activationStatus ? (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                            Pending activation
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-slate-600">{formatDate(member.joinedAt)}</td>
+                      <td className="whitespace-nowrap px-5 py-3 font-semibold text-emerald-600">
+                        {naira(member.bonusEarned)}
+                      </td>
+                    </tr>
+                  ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </div>

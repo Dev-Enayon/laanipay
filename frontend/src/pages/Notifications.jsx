@@ -86,7 +86,7 @@ export default function Notifications() {
   return (
     <div className="container-lp pt-28 pb-16">
       <div className="card-light overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6">
           <div>
             <h1 className="flex items-center gap-2 font-display text-xl font-bold text-slate-900">
               <Bell className="h-5 w-5 text-primary" /> Notifications
@@ -124,7 +124,7 @@ export default function Notifications() {
               return (
                 <li
                   key={n.id}
-                  className={`flex gap-4 px-6 py-4 transition ${n.read ? 'bg-white' : 'bg-primary/[0.03]'}`}
+                  className={`flex gap-3 px-4 py-4 transition sm:gap-4 sm:px-6 ${n.read ? 'bg-white' : 'bg-primary/[0.03]'}`}
                 >
                   <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${n.read ? 'bg-slate-200' : 'bg-primary'}`} />
                   <div className="min-w-0 flex-1">
@@ -135,7 +135,7 @@ export default function Notifications() {
                       <p className={`font-semibold ${n.read ? 'text-slate-600' : 'text-slate-900'}`}>{n.title}</p>
                       {n.senderName && <span className="text-xs text-slate-400">from {n.senderName}</span>}
                     </div>
-                    <p className={`mt-1 whitespace-pre-wrap text-sm ${n.read ? 'text-slate-500' : 'text-slate-700'}`}>
+                    <p className={`mt-1 whitespace-pre-wrap break-words text-sm ${n.read ? 'text-slate-500' : 'text-slate-700'}`}>
                       {n.body}
                     </p>
                     <p className="mt-1.5 text-xs text-slate-400">{formatDateTime(n.createdAt)}</p>
@@ -146,7 +146,7 @@ export default function Notifications() {
                         onClick={() => handleRead(n.id)}
                         disabled={busyId === n.id}
                         title="Mark as read"
-                        className="rounded-lg p-2 text-slate-400 transition hover:bg-primary/10 hover:text-primary"
+                        className="rounded-lg p-2.5 text-slate-400 transition hover:bg-primary/10 hover:text-primary"
                       >
                         <Check className="h-4 w-4" />
                       </button>
@@ -154,7 +154,7 @@ export default function Notifications() {
                     <button
                       onClick={() => handleDismiss(n.id)}
                       title="Dismiss"
-                      className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500"
+                      className="rounded-lg p-2.5 text-slate-400 transition hover:bg-red-50 hover:text-red-500"
                     >
                       <X className="h-4 w-4" />
                     </button>

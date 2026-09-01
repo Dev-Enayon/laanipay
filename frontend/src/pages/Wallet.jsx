@@ -47,12 +47,12 @@ export default function Wallet() {
         <>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
             <Reveal>
-              <div className="card-light relative overflow-hidden p-8">
+              <div className="card-light relative overflow-hidden p-6 sm:p-8">
                 <div className="hero-gradient absolute inset-0 opacity-10" />
                 <div className="relative flex items-center gap-2 text-sm font-medium text-slate-500">
-                  <PiggyBank className="h-4 w-4 text-primary" /> Total contributed
+                  <PiggyBank className="h-4 w-4 shrink-0 text-primary" /> Total contributed
                 </div>
-                <p className="relative mt-2 text-4xl font-extrabold text-slate-900">
+                <p className="relative mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">
                   {naira(wallet.totalContributed ?? 0)}
                 </p>
                 <p className="relative mt-2 text-xs text-slate-400">
@@ -63,12 +63,12 @@ export default function Wallet() {
             </Reveal>
 
             <Reveal delay={120}>
-              <div className="card-light relative overflow-hidden p-8">
+              <div className="card-light relative overflow-hidden p-6 sm:p-8">
                 <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-neon/10 blur-3xl" />
                 <div className="relative flex items-center gap-2 text-sm font-medium text-slate-500">
-                  <TrendingUp className="h-4 w-4 text-primary" /> Referral earnings balance
+                  <TrendingUp className="h-4 w-4 shrink-0 text-primary" /> Referral earnings balance
                 </div>
-                <p className="relative mt-2 text-4xl font-extrabold text-slate-900">
+                <p className="relative mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">
                   {naira(wallet.balance ?? 0)}
                 </p>
                 <p className="relative mt-2 text-xs text-slate-400">MLM bonuses credited to you</p>

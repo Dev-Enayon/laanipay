@@ -160,7 +160,7 @@ export default function Contribution() {
           {plans.map((plan, index) => (
             <Reveal key={plan.id} delay={index * 120}>
               <div
-                className={`card-light h-full p-8 transition-all duration-300 hover:-translate-y-1.5 ${
+                className={`card-light h-full p-6 transition-all duration-300 hover:-translate-y-1.5 sm:p-8 ${
                   index === 3 ? 'hover:shadow-neon' : 'hover:shadow-glow'
                 }`}
               >
@@ -226,7 +226,7 @@ export default function Contribution() {
               Next payment due: <span className="font-semibold text-slate-800">{formatDate(subscription.nextPaymentDate)}</span>
             </div>
 
-            <button onClick={payNow} disabled={busy} className="btn-primary mt-6">
+            <button onClick={payNow} disabled={busy} className="btn-primary mt-6 w-full sm:w-auto">
               {busy ? 'Processing...' : `Pay ${naira(subscription.plan.monthlyAmount)} now`}
             </button>
             <button
@@ -270,7 +270,8 @@ export default function Contribution() {
               </div>
             ) : (
               <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 bg-white">
-                <table className="w-full text-left text-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[500px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
                       <th className="px-5 py-3">Reference</th>
@@ -300,6 +301,7 @@ export default function Contribution() {
                     ))}
                   </tbody>
                 </table>
+                  </div>
               </div>
             )}
           </div>
