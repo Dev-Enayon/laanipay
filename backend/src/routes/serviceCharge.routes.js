@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { billingMonthFor, nextChargeDate } from '../lib/serviceCharge.js';
 import { runMonthlyChargeOnce } from '../lib/scheduler.js';
 import { env } from '../config/env.js';
+import { getPlatformConfig } from '../lib/config.js';
 
 const router = Router();
 
@@ -35,8 +36,10 @@ router.get(
       nextDate.getDate(),
     ).padStart(2, '0')}`;
 
+    const config = await getPlatformConfig();
     res.json({
-      monthlyFeeKobo: env.serviceChargeKobo,
+      monthlyFeeKobo: config.monthlySubscriptionFeeKobo ?? env.serviceChargeKobo,
+      serviceChargeEnabled: env.serviceChargeEnabled,
       currentMonth: billingMonthFor(),
       currentMonthStatus: monthCharged?.status ?? 'not_processed',
       nextChargeDate: nextChargeStr,
@@ -90,8 +93,10 @@ router.get(
       _count: { _all: true },
       _sum: { amountKobo: true },
     });
+    const config = await getPlatformConfig();
     res.json({
-      monthlyFeeKobo: env.serviceChargeKobo,
+      monthlyFeeKobo: config.monthlySubscriptionFeeKobo ?? env.serviceChargeKobo,
+      serviceChargeEnabled: env.serviceChargeEnabled,
       charges: charges.map((c) => ({
         id: c.id,
         userId: c.userId,
@@ -123,7 +128,9 @@ router.post(
     if (billingMonth && !/^\d{4}-\d{2}$/.test(billingMonth)) {
       throw new AppError('billingMonth must be in YYYY-MM format', 400);
     }
-    const summary = await runMonthlyChargeOnce(billingMonth || undefined);
+    const summary = await runMonthlyChargeOnce(billingMonth || undefined, {
+      force: req.body?.force === true,
+    });
     res.json({ message: 'Service charge run complete', month: billingMonth || billingMonthFor(), ...summary });
   }),
 );

@@ -33,6 +33,9 @@ export default function Footer() {
             <li>
               <Link to="/mlm" className="transition-colors hover:text-neon">MLM Platform</Link>
             </li>
+            <li>
+              <Link to="/terms" className="transition-colors hover:text-neon">Terms &amp; Conditions</Link>
+            </li>
           </ul>
         </div>
 

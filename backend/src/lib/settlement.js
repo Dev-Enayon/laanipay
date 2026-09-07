@@ -1,6 +1,7 @@
 import { prisma } from './prisma.js';
 import { verifyTransaction } from './paystack.js';
 import { creditActivationBonuses } from './mlm.js';
+import { ensureSubscriptionCohort } from './cohort.js';
 import { AppError } from '../middleware/error.js';
 import {
   sendActivationSuccessEmail,
@@ -8,6 +9,13 @@ import {
   sendRankUpEmail,
   sendContributionReceiptEmail,
 } from './mailer.js';
+
+// Adds n weeks to a Date, preserving the day-of-month as best as possible.
+function addWeeks(date, weeks = 1) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + weeks * 7);
+  return d;
+}
 
 // Settles a payment reference against Paystack and, on success, records the
 // outcome in the database. Idempotent and safe under concurrent calls
@@ -94,7 +102,7 @@ export async function settlePayment({ reference, expectedUserId }) {
 
   const contribution = await prisma.contributionPayment.findUnique({
     where: { paystackReference: reference },
-    include: { subscription: { include: { plan: true } } },
+    include: { subscription: { include: { plan: true, cohort: true } } },
   });
 
   if (contribution) {
@@ -117,13 +125,10 @@ export async function settlePayment({ reference, expectedUserId }) {
       return { verified: false, kind: 'contribution', reason: 'Payment not successful' };
     }
 
-    const nextPaymentDate = new Date(contribution.subscription.nextPaymentDate);
-    nextPaymentDate.setDate(1);
-    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-    const lastDay = new Date(nextPaymentDate.getFullYear(), nextPaymentDate.getMonth() + 1, 0).getDate();
-    nextPaymentDate.setDate(Math.min(contribution.subscription.nextPaymentDate.getDate(), lastDay));
+    const nextPaymentDate = addWeeks(contribution.subscription.nextPaymentDate, 1);
 
     let freshlyVerified = false;
+    let verifier = { weekIndex: null, cohortId: null, cohortName: null };
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.contributionPayment.updateMany({
@@ -133,6 +138,36 @@ export async function settlePayment({ reference, expectedUserId }) {
 
       if (claimed.count === 1) {
         freshlyVerified = true;
+
+        // Weekly cycle + AJO cohort attribution.
+        const { cohort } = await ensureSubscriptionCohort(tx, contribution.subscription);
+        const weekIndex = cohort?.status === 'ACTIVE' ? cohort.currentWeek : null;
+        verifier = {
+          weekIndex,
+          cohortId: cohort?.id ?? null,
+          cohortName: cohort?.name ?? null,
+        };
+
+        await tx.contributionPayment.update({
+          where: { id: contribution.id },
+          data: { weekIndex, cohortId: cohort?.id ?? null },
+        });
+
+        if (cohort) {
+          const memberRow = await tx.cohortMember.findFirst({
+            where: { cohortId: cohort.id, userId: contribution.subscription.userId },
+          });
+          if (memberRow && weekIndex) {
+            await tx.cohortMember.update({
+              where: { id: memberRow.id },
+              data: {
+                lastPaidWeek: weekIndex,
+                totalPaid: { increment: contribution.amount },
+              },
+            });
+          }
+        }
+
         await tx.contributionSubscription.update({
           where: { id: contribution.subscriptionId },
           data: { nextPaymentDate },
@@ -149,15 +184,24 @@ export async function settlePayment({ reference, expectedUserId }) {
             balanceAfter: wallet.balance,
             status: 'completed',
             reference: contribution.paystackReference,
-            description: `Monthly contribution — ${contribution.subscription.plan?.name ?? 'Contribution plan'}`,
-            metadata: { planId: contribution.subscription.planId },
+            description: `Weekly contribution — ${contribution.subscription.plan?.name ?? 'Contribution plan'}`,
+            metadata: {
+              planId: contribution.subscription.planId,
+              weekIndex,
+              cohortId: cohort?.id ?? null,
+            },
           },
         });
         await tx.auditLog.create({
           data: {
             userId: contribution.subscription.userId,
             action: 'CONTRIBUTION_PAYMENT_VERIFIED',
-            metadata: { reference, amount: contribution.amount },
+            metadata: {
+              reference,
+              amount: contribution.amount,
+              weekIndex,
+              cohortId: cohort?.id ?? null,
+            },
           },
         });
       }
@@ -177,7 +221,7 @@ export async function settlePayment({ reference, expectedUserId }) {
       }
     }
 
-    return { verified: true, kind: 'contribution' };
+    return { verified: true, kind: 'contribution', ...verifier };
   }
 
   throw new AppError('Unknown payment reference', 404);

@@ -156,6 +156,14 @@ export default function AdminServiceCharge() {
 
       {error && <div className="mx-5 mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div>}
 
+      {stats?.serviceChargeEnabled === false && (
+        <div className="mx-5 mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Service-charge collection is currently DISABLED (SERVICE_CHARGE_ENABLED != true). The
+          scheduler will not run automatically.
+        </div>
+      )}
+
       {loading && !stats ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-7 w-7 animate-spin text-primary" />

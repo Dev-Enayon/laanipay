@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { settlePayment } from '../lib/settlement.js';
+import { getPlatformConfig } from '../lib/config.js';
+import { applyProviderResult } from '../lib/withdrawals.js';
 import { env } from '../config/env.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -17,6 +19,9 @@ router.post(
       throw new AppError('Account is already activated', 409);
     }
 
+    const config = await getPlatformConfig();
+    const amount = config.registrationFeeKobo ?? env.activationFeeKobo;
+
     const payment = await prisma.$transaction(async (tx) => {
       await tx.activationPayment.updateMany({
         where: { userId: req.userId, status: 'pending' },
@@ -28,7 +33,7 @@ router.post(
         data: {
           userId: req.userId,
           paystackReference: reference,
-          amount: env.activationFeeKobo,
+          amount,
           status: 'pending',
         },
       });
@@ -56,8 +61,10 @@ router.post(
 
 // Paystack webhook — server-to-server notification of charge.success.
 // Signature is HMAC-SHA512 of the raw body using the Paystack secret key.
-// The browser-callback verify flow remains the primary path; the webhook
-// provides a reliable fallback and is idempotent with it.
+// Every event is persisted (webhook_events) for audit and idempotency: the
+// unique (provider, event, reference) row means a retried webhook settles the
+// underlying payment at most once. The browser-callback verify flow remains
+// the primary path; the webhook provides a reliable fallback.
 router.post(
   '/webhook',
   asyncHandler(async (req, res) => {
@@ -83,13 +90,103 @@ router.post(
       return res.status(400).json({ error: 'Invalid payload' });
     }
 
-    if (event?.event === 'charge.success' && event?.data?.reference) {
-      try {
-        await settlePayment({ reference: event.data.reference });
-      } catch (err) {
-        // Acknowledge receipt regardless; unknown references are logged, not retried.
-        console.error('[webhook] settlement failed:', err.message);
+    const eventName = event?.event ?? 'unknown';
+    const reference = typeof event?.data?.reference === 'string' ? event.data.reference : null;
+
+    // Persist the event (idempotent via unique key). Null references are
+    // recorded as plain rows since composite-unique lookups require a value.
+    let row;
+    try {
+      if (reference) {
+        row = await prisma.webhookEvent.upsert({
+          where: {
+            provider_event_reference: { provider: 'paystack', event: eventName, reference },
+          },
+          update: {},
+          create: {
+            provider: 'paystack',
+            event: eventName,
+            reference,
+            status: 'RECEIVED',
+            body: event,
+          },
+        });
+      } else {
+        row = await prisma.webhookEvent.create({
+          data: {
+            provider: 'paystack',
+            event: eventName,
+            reference: null,
+            status: 'RECEIVED',
+            body: event,
+          },
+        });
       }
+    } catch (err) {
+      console.error('[webhook] failed to persist event:', err?.message ?? err);
+    }
+
+    if (eventName === 'charge.success' && reference && row) {
+      if (row.status !== 'PROCESSED') {
+        try {
+          await settlePayment({ reference });
+          await prisma.webhookEvent
+            .update({ where: { id: row.id }, data: { status: 'PROCESSED' } })
+            .catch(() => {});
+        } catch (err) {
+          // Unknown references (or Paystack errors) are logged, not retried
+          // forever by Paystack. The row marks the failure for admin review.
+          await prisma.webhookEvent
+            .update({
+              where: { id: row.id },
+              data: { status: 'FAILED', message: String(err?.message ?? err) },
+            })
+            .catch(() => {});
+          console.error('[webhook] settlement failed:', err?.message ?? err);
+        }
+      }
+    } else if (
+      (eventName === 'transfer.success' || eventName === 'transfer.failed') &&
+      reference &&
+      row
+    ) {
+      if (row.status !== 'PROCESSED') {
+        try {
+          const ok = eventName === 'transfer.success';
+          const message =
+            ok ? null : String(event?.data?.failure_reason ?? 'Transfer failed');
+          const result = await applyProviderResult({
+            reference,
+            ok,
+            message,
+          });
+          await prisma.webhookEvent
+            .update({
+              where: { id: row.id },
+              data: {
+                status: result?.ignored ? 'IGNORED' : 'PROCESSED',
+                message: result?.ignored ? `Unknown reference: ${reference}` : null,
+              },
+            })
+            .catch(() => {});
+          if (result?.ignored) {
+            console.warn('[webhook] ignored transfer event for unknown reference:', reference);
+          }
+        } catch (err) {
+          await prisma.webhookEvent
+            .update({
+              where: { id: row.id },
+              data: { status: 'FAILED', message: String(err?.message ?? err) },
+            })
+            .catch(() => {});
+          console.error('[webhook] transfer event handling failed:', err?.message ?? err);
+        }
+      }
+    } else if (row && row.status === 'RECEIVED') {
+      // Recorded events we take no action on (transfer.*, invoice.*, etc.).
+      await prisma.webhookEvent
+        .update({ where: { id: row.id }, data: { status: 'IGNORED' } })
+        .catch(() => {});
     }
 
     res.json({ received: true });

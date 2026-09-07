@@ -142,14 +142,24 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-3">
             <p className="flex min-w-0 items-center gap-2.5 font-bold text-slate-900">
               <Receipt className="h-5 w-5 shrink-0 text-emerald-600" />
-              <span className="truncate">Monthly Service Charge</span>
+              <span className="truncate">Monthly Subscription</span>
             </p>
-            <span className="shrink-0 text-xl font-extrabold tracking-tight text-emerald-700">₦500</span>
+            <span className="shrink-0 text-xl font-extrabold tracking-tight text-emerald-700">
+              {nairaCompact(sc?.monthlyFeeKobo ?? 30000)}
+            </span>
           </div>
 
           <p className="mt-3 max-w-xl leading-relaxed text-slate-500">
-            A ₦500 service charge is deducted from your wallet monthly.
+            A {nairaCompact(sc?.monthlyFeeKobo ?? 30000)} subscription is deducted from your wallet
+            monthly to keep your plans active.
           </p>
+
+          {sc?.serviceChargeEnabled === false && (
+            <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">
+              <CalendarClock className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+              Subscription collection is currently inactive — you will not be charged.
+            </p>
+          )}
 
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-8 md:mt-3">
             {sc?.nextChargeDate && (
@@ -231,13 +241,13 @@ export default function Dashboard() {
             <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-neon/15 transition-colors group-hover:bg-neon sm:h-14 sm:w-14">
               <PiggyBank className="h-6 w-6 text-emerald-600 transition-colors group-hover:text-ink sm:h-7 sm:w-7" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Contribution Platform</h3>
+            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Weekly AJO Platform</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Pick a monthly plan from ₦1,000 and build disciplined community savings with live
-              progress tracking.
+              Join a 52-member weekly AJO cohort from ₦1,000/week and collect the pool when it is
+              your turn.
             </p>
             <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
-              Open contribution platform →
+              Open AJO platform →
             </span>
           </div>
         </Link>

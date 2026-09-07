@@ -28,10 +28,27 @@ export const env = {
   emailVerificationEnabled:
     (process.env.EMAIL_VERIFICATION_ENABLED ?? 'true').toLowerCase() === 'true',
   activationFeeKobo: 150000,
-  serviceChargeKobo: 50000, // ₦500 monthly service charge
+  serviceChargeKobo: 30000, // ₦300 monthly subscription (admin settings are authoritative; env is the fallback)
   serviceChargeCurrency: 'NGN',
   serviceChargeCron: process.env.SERVICE_CHARGE_CRON ?? '0 0 1 * *', // 1st of month, midnight
   serviceChargeEnabled: (process.env.SERVICE_CHARGE_ENABLED ?? 'false').toLowerCase() === 'true',
+  // Withdrawals: external bank transfers via Paystack are disabled by default.
+  // When disabled, withdrawal requests are recorded and reserved, and settled
+  // through the admin-verified payout flow (no faked bank payouts).
+  withdrawalBankTransferEnabled:
+    (process.env.WITHDRAWAL_BANK_TRANSFER_ENABLED ?? 'false').toLowerCase() === 'true',
+  // Minimum hours that must elapse between two cohort-week advances. Guards
+  // against accidental double advancement (cron + manual run, overlapping
+  // instances). 0 disables the guard. Parse fail-safe: an unset or INVALID
+  // value falls back to the safe default (6) so a typo can never silently turn
+  // this financial guard off.
+  cohortMinAdvanceHours: (() => {
+    const raw = process.env.COHORT_MIN_ADVANCE_HOURS;
+    if (raw === undefined || raw === null || raw.trim() === '') return 6;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return 6;
+    return Math.floor(n);
+  })(),
   adminEmail: (process.env.ADMIN_EMAIL ?? 'admin@laanipay.ng').trim().toLowerCase(),
   bcryptRounds: 10,
 };

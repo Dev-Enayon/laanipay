@@ -1,8 +1,19 @@
-// Monthly ₦500 service charge — core, idempotent, atomic. All amounts in kobo.
+// Monthly ₦300 subscription (amount from admin settings) — core, idempotent,
+// atomic. All amounts in kobo.
 import { prisma } from './prisma.js';
 import { env } from '../config/env.js';
+import { getPlatformConfig } from './config.js';
+import { splitReferralFee } from './rewards.js';
+import { creditSubscriptionRewards } from './mlm.js';
 
-const AMOUNT = () => env.serviceChargeKobo || 50000; // ₦500
+const AMOUNT = async (config) => {
+  const cfg = config ?? (await getPlatformConfig());
+  return cfg.monthlySubscriptionFeeKobo ?? (env.serviceChargeKobo || 30000); // ₦300 monthly subscription
+};
+
+export function naira(kobo) {
+  return `₦${(kobo / 100).toLocaleString('en-NG')}`;
+}
 
 // 'YYYY-MM' string for a given Date (local time).
 export function billingMonthFor(date = new Date()) {
@@ -28,7 +39,7 @@ export function nextChargeDate(date = new Date()) {
  */
 export async function collectMonthlyServiceCharge(billingMonth) {
   const month = billingMonth ?? billingMonthFor();
-  const amount = AMOUNT();
+  const amount = await AMOUNT();
 
   let summary = { collected: 0, insufficient: 0, failed: 0, skipped: 0 };
 
@@ -61,13 +72,13 @@ export async function collectMonthlyServiceCharge(billingMonth) {
 
 /**
  * Collects the charge for a single user/month. Atomic and idempotent.
- * - Exactly ₦500 deducted, never negative balance.
+ * - The full monthly fee is deducted, never a negative balance.
  * - Insufficient balance => records 'insufficient_funds' row + notification, no deduction.
  * - Success => wallet debited, admin wallet credited, CompanyLedger income,
  *   WalletTransaction (service_charge), Notification, AuditLog.
  */
 export async function collectForUser({ userId, billingMonth, amount, admin }) {
-  if (!amount) amount = AMOUNT();
+  if (!amount) amount = await AMOUNT();
   const month = billingMonth ?? billingMonthFor();
 
   try {
@@ -107,8 +118,10 @@ export async function collectForUser({ userId, billingMonth, amount, admin }) {
         await tx.notification.create({
           data: {
             userId,
-            title: 'Monthly Service Charge not collected',
-            body: `We could not collect the ₦500 monthly service charge because your wallet balance is below ₦500. It will be retried in a future month when funds are available.`,
+            title: 'Monthly subscription not collected',
+            body: `We could not collect the ${naira(amount)} monthly subscription because your wallet balance is below ${naira(
+              amount,
+            )}. It will be retried in a future month when funds are available.`,
             type: 'error',
           },
         });
@@ -139,12 +152,30 @@ export async function collectForUser({ userId, billingMonth, amount, admin }) {
         });
       }
 
+      // 3-level referral rewards on the monthly subscription. The split is
+      // capped against the collected amount, so rewards can never exceed the
+      // fee; the balance is platform revenue (ledger row below).
+      const config = await getPlatformConfig();
+      const split = splitReferralFee({
+        feeKobo: amount,
+        type: 'MONTHLY_SUBSCRIPTION',
+        rewards: config.rewards,
+      });
+      if (split.totalRewards > 0) {
+        await creditSubscriptionRewards({
+          tx,
+          payerUserId: userId,
+          billingMonth: month,
+          rewardsByLevel: split.byLevel,
+        });
+      }
+
       // Company ledger income entry for reconciliation.
       const ledger = await tx.companyLedger.create({
         data: {
           type: 'service_charge',
           amount,
-          description: `Monthly service charge — ${month}`,
+          description: `Monthly subscription — ${month}`,
           adminId: creditedAdmin?.id ?? null,
         },
       });
@@ -157,7 +188,7 @@ export async function collectForUser({ userId, billingMonth, amount, admin }) {
           amount,
           balanceAfter: updatedWallet.balance,
           status: 'completed',
-          description: 'Monthly Service Charge - ₦500',
+          description: `Monthly subscription - ${naira(amount)}`,
           metadata: { billingMonth: month, ledgerId: ledger.id, creditedTo: creditedAdmin?.email ?? null },
         },
       });
@@ -184,8 +215,8 @@ export async function collectForUser({ userId, billingMonth, amount, admin }) {
       await tx.notification.create({
         data: {
           userId,
-          title: 'Monthly Service Charge Deducted',
-          body: `₦500 has been deducted from your wallet as your monthly service charge.`,
+          title: 'Monthly Subscription Deducted',
+          body: `${naira(amount)} has been deducted from your wallet as your monthly subscription.`,
           type: 'success',
         },
       });

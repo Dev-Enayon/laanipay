@@ -35,3 +35,9 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      - key: SERVICE_CHARGE_ENABLED
+        value: false
+      - key: COHORT_MIN_ADVANCE_HOURS
+        value: "6"
+      - key: WITHDRAWAL_BANK_TRANSFER_ENABLED
+        value: false

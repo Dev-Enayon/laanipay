@@ -15,6 +15,13 @@ out/
 *.log
 npm-debug.log*
 
+# Production database dumps / backups — NEVER commit
+# (Prisma migrations under backend/prisma/migrations/** are source and stay tracked)
+*.sql
+!backend/prisma/migrations/**/*.sql
+*production-backup*
+*backup*
+
 # OS
 .DS_Store
 

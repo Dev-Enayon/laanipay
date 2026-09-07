@@ -158,28 +158,28 @@ export default function Mlm() {
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-500/20">
                     <Crown className="h-4 w-4 text-slate-300" />
                   </span>
-                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Basic Plan</h3>
+                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Registration rewards</h3>
                   <span className="ml-auto rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white/50">
-                    All members
+                    Every member
                   </span>
                 </div>
-                <p className="relative text-xs text-white/40">Earn on 3 levels of your activation tree:</p>
+                <p className="relative text-xs text-white/40">Earn on 3 levels of your referral tree when a referral activates:</p>
                 <ul className="relative mt-3 space-y-2 text-sm">
                   <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
                     <span className="font-medium text-white/70">Level 1</span>
-                    <span className="font-display text-base font-bold text-slate-100">₦500</span>
-                  </li>
-                  <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
-                    <span className="font-medium text-white/70">Level 2</span>
                     <span className="font-display text-base font-bold text-slate-100">₦200</span>
                   </li>
                   <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
-                    <span className="font-medium text-white/70">Level 3</span>
+                    <span className="font-medium text-white/70">Level 2</span>
                     <span className="font-display text-base font-bold text-slate-100">₦100</span>
+                  </li>
+                  <li className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
+                    <span className="font-medium text-white/70">Level 3</span>
+                    <span className="font-display text-base font-bold text-slate-100">₦50</span>
                   </li>
                 </ul>
                 <p className="relative mt-3 text-[11px] text-white/40">
-                  Bonus is paid when each downline activates their account.
+                  Paid once, when each downline activates their account.
                 </p>
               </div>
             </Reveal>
@@ -191,30 +191,31 @@ export default function Mlm() {
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-yellow-400/15">
                     <Crown className="h-4 w-4 text-yellow-300" />
                   </span>
-                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Pro Plan</h3>
+                  <h3 className="font-display text-lg font-bold tracking-tight text-white">Monthly subscription rewards</h3>
                   <span className="ml-auto rounded-full bg-gradient-to-r from-yellow-200 to-amber-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-ink">
-                    Director+
+                    Recurring
                   </span>
                 </div>
                 <p className="relative text-xs text-white/50">
-                  Unlocked automatically at{' '}
-                  <span className="font-semibold text-yellow-300">Director</span> rank (15 direct
-                  referrals). All bonuses boosted by 30%.
+                  Earn again on your direct and extended team whenever their ₦300 monthly subscription is collected.
                 </p>
                 <ul className="relative mt-3 space-y-2 text-sm">
                   <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
                     <span className="font-medium text-white/70">Level 1</span>
-                    <span className="font-display text-base font-bold text-yellow-300">₦650</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦50</span>
                   </li>
                   <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
                     <span className="font-medium text-white/70">Level 2</span>
-                    <span className="font-display text-base font-bold text-yellow-300">₦260</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦30</span>
                   </li>
                   <li className="flex items-center justify-between rounded-xl border border-yellow-400/20 bg-white/5 px-4 py-2.5">
                     <span className="font-medium text-white/70">Level 3</span>
-                    <span className="font-display text-base font-bold text-yellow-300">₦130</span>
+                    <span className="font-display text-base font-bold text-yellow-300">₦20</span>
                   </li>
                 </ul>
+                <p className="relative mt-3 text-[11px] text-white/40">
+                  Paid monthly on top of your registration rewards, while your downline stays active.
+                </p>
               </div>
             </Reveal>
           </div>
@@ -300,10 +301,10 @@ export default function Mlm() {
                 <h3 className="text-lg font-bold text-white">Monthly Verification Plan</h3>
               </div>
               <p className="mt-3 text-sm leading-relaxed text-white/60">
-                To keep your earning status and rank progression active, maintain an active monthly
-                contribution subscription on the Contribution Platform. Each month your account is
-                verified automatically once your contribution payment succeeds — keeping your team
-                bonuses flowing.
+                Keep your earning status and rank progression active by maintaining a ₦300 monthly
+                subscription (deducted from your wallet). While your downline stays active each
+                month, their subscription keeps earning you level 1–3 rewards. Contribution on your
+                weekly AJO plan keeps your account verified automatically.
               </p>
             </GlassCard>
           </Reveal>

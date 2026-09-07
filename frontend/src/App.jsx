@@ -10,6 +10,7 @@ import {
   FullScreenLoader,
 } from './components/ProtectedRoute.jsx';
 import Landing from './pages/Landing.jsx';
+import Terms from './pages/Terms.jsx';
 
 const Signup = lazy(() => import('./pages/Signup.jsx'));
 const Login = lazy(() => import('./pages/Login.jsx'));
@@ -27,6 +28,10 @@ const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
 const AdminUserDetail = lazy(() => import('./pages/admin/AdminUserDetail.jsx'));
 const AdminAudit = lazy(() => import('./pages/admin/AdminAudit.jsx'));
 const AdminNotifications = lazy(() => import('./pages/admin/AdminNotifications.jsx'));
+const AdminCohorts = lazy(() => import('./pages/admin/AdminCohorts.jsx'));
+const AdminRewards = lazy(() => import('./pages/admin/AdminRewards.jsx'));
+const AdminWebhooks = lazy(() => import('./pages/admin/AdminWebhooks.jsx'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings.jsx'));
 
 export default function App() {
   return (
@@ -51,6 +56,7 @@ export default function App() {
                 </GuestRoute>
               }
             />
+            <Route path="/terms" element={<Terms />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route
               path="/activate"
@@ -111,8 +117,12 @@ export default function App() {
               <Route index element={<AdminOverview />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetail />} />
+              <Route path="cohorts" element={<AdminCohorts />} />
+              <Route path="rewards" element={<AdminRewards />} />
+              <Route path="webhooks" element={<AdminWebhooks />} />
               <Route path="audit" element={<AdminAudit />} />
               <Route path="notifications" element={<AdminNotifications />} />
+              <Route path="settings" element={<AdminSettings />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

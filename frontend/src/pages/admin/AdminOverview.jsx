@@ -10,6 +10,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Network,
+  Layers,
+  Landmark,
   Loader2,
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
@@ -40,6 +42,10 @@ const CARD_STYLES = {
   totalWithdrawals: { icon: ArrowUpFromLine, accent: 'text-white', chip: 'from-red-400 to-red-600' },
   totalDeposits: { icon: ArrowDownToLine, accent: 'text-white', chip: 'from-sky-400 to-sky-600' },
   totalMlmMembers: { icon: Network, accent: 'text-white', chip: 'from-fuchsia-400 to-fuchsia-600' },
+  activeCohorts: { icon: Layers, accent: 'text-white', chip: 'from-violet-400 to-violet-600' },
+  cohortMembers: { icon: Users, accent: 'text-white', chip: 'from-sky-400 to-sky-600' },
+  platformFees: { icon: Landmark, accent: 'text-white', chip: 'from-blue-500 to-blue-700' },
+  payoutDisbursements: { icon: ArrowDownToLine, accent: 'text-white', chip: 'from-emerald-400 to-emerald-600' },
 };
 
 export default function AdminOverview() {
@@ -85,6 +91,10 @@ export default function AdminOverview() {
     { key: 'totalWithdrawals', label: 'Total Withdrawals', value: naira(s.totalWithdrawals) },
     { key: 'totalDeposits', label: 'Total Deposits / Funding', value: naira(s.totalDeposits) },
     { key: 'totalMlmMembers', label: 'Total MLM Members', value: s.totalMlmMembers },
+    { key: 'activeCohorts', label: 'Active AJO Cohorts', value: `${s.cohorts?.active ?? 0} active · ${s.cohorts?.recruiting ?? 0} recruiting` },
+    { key: 'cohortMembers', label: 'Cohort Members', value: s.cohorts?.totalMembers ?? 0 },
+    { key: 'platformFees', label: 'AJO Platform Fees', value: naira(s.platformFees ?? 0) },
+    { key: 'payoutDisbursements', label: 'AJO Payouts Disbursed', value: naira(s.payoutDisbursements ?? 0) },
   ];
 
   return (

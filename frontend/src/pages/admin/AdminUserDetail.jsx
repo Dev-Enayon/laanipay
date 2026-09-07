@@ -265,14 +265,14 @@ export default function AdminUserDetail() {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Plan</p>
                   <p className="mt-1 font-bold text-slate-800">{contribution.subscription.plan.name}</p>
-                  <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(contribution.subscription.plan.monthlyAmount)}/mo</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(contribution.subscription.plan.weeklyAmount)}/wk</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Next payment</p>
                   <p className="mt-1 font-bold text-slate-800">{formatDate(contribution.subscription.nextPaymentDate)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Months paid</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Weeks paid</p>
                   <p className="mt-1 font-bold text-slate-800">{contribution.monthsPaid}</p>
                 </div>
                 <div>

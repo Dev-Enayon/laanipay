@@ -218,10 +218,14 @@ export async function computeSummary() {
     contributions,
     activationRevenue,
     serviceChargeRevenue,
+    platformFeeRevenue,
+    payoutDisbursements,
     bonusPayouts,
     expenses,
     txDeposits,
     txWithdrawals,
+    cohortCounts,
+    cohortMemberCount,
   ] = await Promise.all([
     prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
     prisma.user.count(),
@@ -238,7 +242,15 @@ export async function computeSummary() {
       where: { type: 'service_charge' },
       _sum: { amount: true },
     }),
-    prisma.mlmReferral.aggregate({ _sum: { bonusEarned: true } }),
+    prisma.companyLedger.aggregate({
+      where: { type: 'platform_fee' },
+      _sum: { amount: true },
+    }),
+    prisma.companyLedger.aggregate({
+      where: { type: 'payout_disbursement' },
+      _sum: { amount: true },
+    }),
+    prisma.referralReward.aggregate({ _sum: { amountKobo: true } }),
     prisma.companyLedger.aggregate({ _sum: { amount: true } }),
     prisma.walletTransaction.aggregate({
       where: { status: 'completed', type: { in: DEPOSIT_TYPES } },
@@ -248,16 +260,23 @@ export async function computeSummary() {
       where: { status: 'completed', type: 'withdrawal' },
       _sum: { amount: true },
     }),
+    prisma.cohort.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.cohortMember.count(),
   ]);
 
   const statusMap = Object.fromEntries(statusCounts.map((s) => [s.status, s._count._all]));
+  const cohortMap = Object.fromEntries(cohortCounts.map((c) => [c.status, c._count._all]));
 
   const totalDeposits = txDeposits._sum.amount ?? 0;
   const totalWithdrawals = txWithdrawals._sum.amount ?? 0;
-  const revenue = (activationRevenue._sum.amount ?? 0) + (serviceChargeRevenue._sum.amount ?? 0);
-  const bonuses = bonusPayouts._sum.bonusEarned ?? 0;
+  const feeRevenue =
+    (activationRevenue._sum.amount ?? 0) +
+    (serviceChargeRevenue._sum.amount ?? 0) +
+    (platformFeeRevenue._sum.amount ?? 0);
+  const disbursements = payoutDisbursements._sum.amount ?? 0;
+  const bonuses = bonusPayouts._sum.amountKobo ?? 0;
   const totalExpenses = expenses._sum.amount ?? 0;
-  const profit = revenue - bonuses - totalExpenses;
+  const profit = feeRevenue - bonuses - disbursements - totalExpenses;
 
   const mlmRows = await prisma.mlmReferral.findMany({
     where: { level: 1 },
@@ -275,13 +294,21 @@ export async function computeSummary() {
     suspendedUsers: statusMap.suspended ?? 0,
     totalWalletBalance: walletAgg._sum.balance ?? 0,
     totalUserContributions: contributions._sum.amount ?? 0,
-    companyRevenue: revenue,
+    companyRevenue: feeRevenue,
     companyProfit: profit,
     totalWithdrawals,
     totalDeposits,
     totalMlmMembers: mlmMemberIds.size,
     mlmPayouts: bonuses,
     companyExpenses: totalExpenses,
+    cohorts: {
+      recruiting: cohortMap.RECRUITING ?? 0,
+      active: cohortMap.ACTIVE ?? 0,
+      completed: cohortMap.COMPLETED ?? 0,
+      totalMembers: cohortMemberCount,
+    },
+    platformFees: platformFeeRevenue._sum.amount ?? 0,
+    payoutDisbursements: disbursements,
   };
 }
 

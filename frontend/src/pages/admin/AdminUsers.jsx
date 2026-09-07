@@ -98,7 +98,7 @@ export default function AdminUsers() {
             <option value="">All plans</option>
             {plans.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} ({naira(p.monthlyAmount)})
+                {p.name} ({naira(p.weeklyAmount)})
               </option>
             ))}
           </select>
@@ -175,7 +175,7 @@ export default function AdminUsers() {
                     {u.plan ? (
                       <div>
                         <p className="font-bold text-slate-700">{u.plan.name}</p>
-                        <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(u.plan.monthlyAmount)}/mo</p>
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(u.plan.weeklyAmount)}/wk</p>
                       </div>
                     ) : (
                       <span className="text-sm text-slate-400">—</span>

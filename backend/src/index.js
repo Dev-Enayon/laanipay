@@ -1,35 +1,42 @@
-import { execSync } from 'node:child_process';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
 import seed from './seed-runner.js';
-import { startServiceChargeScheduler } from './lib/scheduler.js';
+import { startServiceChargeScheduler, startCohortScheduler } from './lib/scheduler.js';
 import { startNotificationScheduler } from './lib/notifications.js';
 
-if (env.nodeEnv === 'production' && env.databaseUrl) {
-  const dbEnv = { ...process.env, DATABASE_URL: env.databaseUrl };
-  try {
-    console.log('[db] Generating Prisma client…');
-    execSync('npx prisma generate', { stdio: 'inherit', timeout: 60_000, env: dbEnv });
-    console.log('[db] Pushing schema to database…');
-    try {
-      execSync('npx prisma db push --accept-data-loss', {
-        stdio: 'inherit',
-        timeout: 120_000,
-        env: dbEnv,
-      });
-    } catch {
-      console.log('[db] Schema push failed, retrying with --force-reset…');
-      execSync('npx prisma db push --force-reset --accept-data-loss', {
-        stdio: 'inherit',
-        timeout: 120_000,
-        env: dbEnv,
-      });
-    }
-    console.log('[db] Schema synced');
-  } catch (err) {
-    console.error('[db] Schema sync failed:', err.message);
+// SAFETY: application startup NEVER touches the database schema.
+//
+// No `prisma db push`, `--force-reset`, or `--accept-data-loss` is ever run
+// from this process. Schema changes are applied explicitly during deployment
+// (see README "Database deployment"). If the schema is out of sync the app
+// still boots and reports database errors on individual requests; it never
+// attempts to modify or reset production data.
+
+// The Neon serverless driver can emit unhandled WebSocket 'error' events on
+// transient network hiccups. Node treats those as fatal by default and kills
+// the process. Log them instead and keep serving — Prisma reconnects lazily.
+// Anything that is NOT a recognized connection hiccup is genuinely fatal:
+// log it and exit(1) so the platform restarts a corrupted process.
+const TRANSIENT_DB_ERROR = /websocket|econnreset|econnrefused|etimedout|epipe|connection (closed|terminated|reset)|network error|fetch failed/i;
+
+function isTransientDbError(err) {
+  return TRANSIENT_DB_ERROR.test(`${err?.message ?? err} ${err?.code ?? ''}`);
+}
+
+function logFatal(name, err) {
+  console.error(`[${name}]`, err?.message ?? err);
+}
+
+// Fatal failures exit so Render restarts the process; transient DB errors are
+// logged and the process keeps running (Prisma reconnects lazily).
+function handleFatal(name, err) {
+  if (isTransientDbError(err)) {
+    logFatal(`${name} (transient, ignored)`, err);
+    return;
   }
+  logFatal(`${name} (fatal) — exiting`, err);
+  process.exit(1);
 }
 
 const app = createApp();
@@ -38,39 +45,19 @@ const server = app.listen(env.port, () => {
   console.log(`LaaniPay API listening on http://localhost:${env.port}`);
 });
 
+// Boot-time seed (safely creates reference data + the admin account once). A
+// genuine failure must stop the process so it is not left partially configured;
+// transient DB errors are allowed to recover.
 seed()
   .then(() => console.log('[seed] Done'))
-  .catch((err) => console.error('[seed] Failed:', err.message ?? err));
+  .catch((err) => handleFatal('seed', err));
 
 startServiceChargeScheduler();
+startCohortScheduler();
 startNotificationScheduler();
 
-// The Neon serverless driver can emit unhandled WebSocket 'error' events on
-// transient network hiccups. Node treats those as fatal by default and kills
-// the process. Log them instead and keep serving — Prisma reconnects lazily.
-// Anything that is NOT a recognized connection hiccup is genuinely fatal:
-// log it and exit(1) so the platform restarts a corrupted process.
-function logFatal(name, err) {
-  console.error(`[${name}]`, err?.message ?? err);
-}
-
-const TRANSIENT_DB_ERROR = /websocket|econnreset|econnrefused|etimedout|epipe|connection (closed|terminated|reset)|network error|fetch failed/i;
-
-function isTransientDbError(err) {
-  return TRANSIENT_DB_ERROR.test(`${err?.message ?? err} ${err?.code ?? ''}`);
-}
-
-process.on('uncaughtException', (err) => {
-  if (isTransientDbError(err)) return logFatal('uncaughtException (transient, ignored)', err);
-  logFatal('uncaughtException (fatal) — exiting', err);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason) => {
-  if (isTransientDbError(reason)) return logFatal('unhandledRejection (transient, ignored)', reason);
-  logFatal('unhandledRejection (fatal) — exiting', reason);
-  process.exit(1);
-});
+process.on('uncaughtException', (err) => handleFatal('uncaughtException', err));
+process.on('unhandledRejection', (reason) => handleFatal('unhandledRejection', reason));
 
 async function shutdown() {
   console.log('\nShutting down...');

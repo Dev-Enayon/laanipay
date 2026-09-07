@@ -1,11 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Users, ScrollText, ShieldCheck, Bell } from 'lucide-react';
+import { LayoutDashboard, Users, ScrollText, ShieldCheck, Bell, Layers, Coins, Webhook, Settings } from 'lucide-react';
 
 const tabs = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/cohorts', label: 'Cohorts', icon: Layers },
+  { to: '/admin/rewards', label: 'Rewards', icon: Coins },
   { to: '/admin/notifications', label: 'Notifications', icon: Bell },
+  { to: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
   { to: '/admin/audit', label: 'Audit Logs', icon: ScrollText },
+  { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AdminLayout() {

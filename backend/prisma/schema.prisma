@@ -38,10 +38,15 @@ model User {
   placement                MlmReferral[] @relation("ReferredUser")
   mlmRanks                 MlmRank[]
   contributionSubscriptions ContributionSubscription[]
+  cohortMemberships        CohortMember[]
+  receivedPayouts          Payout[]
+  referralRewards          ReferralReward[] @relation("RewardRecipient")
+  referralRewardsGiven     ReferralReward[] @relation("RewardSource")
   auditLogs                AuditLog[] @relation("UserLogs")
   adminLogs                AuditLog[] @relation("AdminActions")
   targetLogs               AuditLog[] @relation("TargetedUser")
   walletTransactions       WalletTransaction[]
+  withdrawals              Withdrawal[]
   companyLedger            CompanyLedger[]
   serviceCharges           ServiceCharge[]
   notifications            Notification[] @relation("DirectUserNotifications")
@@ -56,6 +61,7 @@ model Wallet {
   id               String   @id @default(cuid())
   userId           String   @unique @map("user_id")
   balance          Int      @default(0)
+  heldBalance      Int      @default(0) @map("held_balance")
   totalContributed Int      @default(0) @map("total_contributed")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -112,9 +118,13 @@ model ContributionPlan {
   id            String   @id @default(cuid())
   name          String   @unique
   monthlyAmount Int      @map("monthly_amount")
+  weeklyAmount  Int      @map("weekly_amount")
+  cycleWeeks    Int      @default(52) @map("cycle_weeks")
   createdAt     DateTime @default(now()) @map("created_at")
 
   subscriptions ContributionSubscription[]
+  cohorts        Cohort[]
+  payouts        Payout[]
 
   @@map("contribution_plans")
 }
@@ -123,12 +133,14 @@ model ContributionSubscription {
   id              String   @id @default(cuid())
   userId          String   @map("user_id")
   planId          String   @map("plan_id")
+  cohortId        String?  @map("cohort_id")
   status          String   @default("active")
   nextPaymentDate DateTime @map("next_payment_date")
   createdAt       DateTime @default(now()) @map("created_at")
 
   user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan     ContributionPlan      @relation(fields: [planId], references: [id])
+  cohort   Cohort?               @relation(fields: [cohortId], references: [id], onDelete: SetNull)
   payments ContributionPayment[]
 
   @@index([userId])
@@ -141,6 +153,8 @@ model ContributionPayment {
   paystackReference String    @unique @map("paystack_reference")
   amount            Int
   status            String    @default("pending")
+  weekIndex         Int?      @map("week_index")
+  cohortId          String?   @map("cohort_id")
   paidAt            DateTime? @map("paid_at")
   createdAt         DateTime  @default(now()) @map("created_at")
 
@@ -148,6 +162,139 @@ model ContributionPayment {
 
   @@index([subscriptionId])
   @@map("contribution_payments")
+}
+
+// Platform configuration — admin-editable key/value store used for financial
+// rules (fees, rewards, cohort size, etc.). Values are stored as JSON so they
+// can be tuned at runtime without deploys.
+model PlatformSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json?
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("platform_settings")
+}
+
+// 3-level referral reward ledger. One row per (recipient, level, source).
+// The sum of rewards for a source never exceeds its payment amount — whatever
+// is left over is implicitly company revenue. `reference` is unique so a
+// repeated credit (webhook retry, scheduler re-run) can never double-pay.
+model ReferralReward {
+  id           String    @id @default(cuid())
+  type         String    // REGISTRATION | MONTHLY_SUBSCRIPTION | WEEKLY_CONTRIBUTION
+  userId       String    @map("user_id") // reward recipient (upline)
+  sourceUserId String    @map("source_user_id") // user whose payment earned the reward
+  level        Int
+  amountKobo   Int       @map("amount_kobo")
+  reference    String    @unique
+  status       String    @default("earned") // earned | paid
+  createdAt    DateTime  @default(now()) @map("created_at")
+  paidAt       DateTime? @map("paid_at")
+
+  user       User @relation("RewardRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  sourceUser User @relation("RewardSource", fields: [sourceUserId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sourceUserId, type])
+  @@map("referral_rewards")
+}
+
+// Weekly AJO (rotating savings) cohort. Exactly `size` positions (default 52).
+// New members take the lowest free position; when full the cohort becomes ACTIVE
+// and a weekly cycle begins in which position N collects the week N pool.
+model Cohort {
+  id          String    @id @default(cuid())
+  name        String
+  planId      String    @map("plan_id")
+  size        Int       @default(52)
+  status      String    @default("RECRUITING") // RECRUITING | ACTIVE | COMPLETED
+  currentWeek Int       @default(1) @map("current_week")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  lastAdvancedAt DateTime? @map("last_advanced_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  plan    ContributionPlan @relation(fields: [planId], references: [id])
+  members CohortMember[]
+  payouts Payout[]
+  subscriptions ContributionSubscription[]
+
+  @@index([planId, status])
+  @@map("cohorts")
+}
+
+model CohortMember {
+  id           String    @id @default(cuid())
+  cohortId     String    @map("cohort_id")
+  userId       String    @map("user_id")
+  position     Int
+  status       String    @default("ACTIVE") // ACTIVE | COLLECTED | WAIVED | LEFT
+  totalPaid    Int       @default(0) @map("total_paid")
+  lastPaidWeek Int?      @map("last_paid_week")
+  collectedWeek Int?     @map("collected_week")
+  joinedAt     DateTime  @default(now()) @map("joined_at")
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payouts Payout[]
+
+  @@unique([cohortId, position])
+  @@unique([cohortId, userId])
+  @@index([userId])
+  @@map("cohort_members")
+}
+
+// A weekly payout to the week's collector. Unique (cohort, weekIndex) makes
+// processing idempotent. `provider` distinguishes internal wallet settlement
+// ('internal') from an external bank transfer ('paystack_transfer' / 'manual')
+// so the limitation is explicit, not hidden.
+model Payout {
+  id                String    @id @default(cuid())
+  cohortId          String    @map("cohort_id")
+  cohortMemberId    String    @map("cohort_member_id")
+  userId            String    @map("user_id")
+  planId            String    @map("plan_id")
+  weekIndex         Int       @map("week_index")
+  grossAmount       Int       @map("gross_amount")
+  platformFee       Int       @default(0) @map("platform_fee")
+  netAmount         Int       @default(0) @map("net_amount")
+  status            String    @default("PROCESSING") // PROCESSING | PAID | FAILED | SKIPPED
+  provider          String    @default("internal")
+  providerReference String?   @map("provider_reference")
+  processedAt       DateTime? @map("processed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  cohort       Cohort           @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  cohortMember CohortMember     @relation(fields: [cohortMemberId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         ContributionPlan @relation(fields: [planId], references: [id])
+
+  @@unique([cohortId, weekIndex])
+  @@index([userId])
+  @@index([status])
+  @@map("payouts")
+}
+
+// Webhook activity log. Every Paystack event is persisted for audit and
+// idempotency; the unique (provider, event, reference) constraint makes retries
+// harmless.
+model WebhookEvent {
+  id        String    @id @default(cuid())
+  provider  String    @default("paystack")
+  event     String
+  reference String?
+  status    String    @default("RECEIVED") // RECEIVED | PROCESSED | FAILED | IGNORED
+  message   String?
+  body      Json?
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@unique([provider, event, reference])
+  @@index([reference])
+  @@index([createdAt])
+  @@map("webhook_events")
 }
 
 model AuditLog {
@@ -189,6 +336,46 @@ model WalletTransaction {
   @@index([userId])
   @@index([createdAt])
   @@map("wallet_transactions")
+}
+
+// Wallet withdrawal requests. Funds are reserved atomically at request time
+// (balance -> heldBalance) so a withdrawal can never drive the available
+// balance negative. External bank transfers (Paystack) are provider-gated:
+// when the provider is disabled a request stays PENDING / PROCESSING and is
+// settled through the admin-verified payout flow; SUCCESS is only ever marked
+// by an admin verification or a confirmed provider event, never faked.
+// `activeLock` (unique, null when inactive) guarantees at most one active
+// (PENDING/PROCESSING) withdrawal per user even under concurrency.
+model Withdrawal {
+  id                       String    @id @default(cuid())
+  userId                   String    @map("user_id")
+  amountKobo               Int       @map("amount_kobo")
+  status                   String    @default("PENDING") // PENDING | PROCESSING | SUCCESS | FAILED | REVERSED | CANCELLED
+  provider                 String    @default("internal") // internal | paystack_transfer
+  providerReference        String?   @unique @map("provider_reference")
+  bankName                 String?   @map("bank_name")
+  bankCode                 String?   @map("bank_code")
+  accountNumber            String?   @map("account_number")
+  accountName              String?   @map("account_name")
+  failureReason            String?   @map("failure_reason")
+  notes                    String?
+  reservedAt               DateTime? @map("reserved_at")
+  processedAt              DateTime? @map("processed_at")
+  completedAt              DateTime? @map("completed_at")
+  cancelledAt              DateTime? @map("cancelled_at")
+  walletTransactionId      String?   @unique @map("wallet_transaction_id")
+  refundedWalletTransactionId String? @unique @map("refunded_wallet_transaction_id")
+  processedByAdminId       String?   @map("processed_by_admin_id")
+  activeLock               String?   @unique @map("active_lock")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("withdrawals")
 }
 
 // Company ledger — recorded platform expenses and revenue adjustments.

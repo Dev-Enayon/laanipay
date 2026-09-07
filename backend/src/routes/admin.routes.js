@@ -4,6 +4,15 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { asyncHandler, AppError } from '../middleware/error.js';
 import { logAudit } from '../lib/audit.js';
 import { computeSummary, computeCharts, computeServiceChargeStats, getServiceChargeTransactions } from '../lib/adminStats.js';
+import { processCohortWeek, runDueCohortPayouts } from '../lib/cohort.js';
+import { getPlatformConfig, setPlatformSetting, platformFeePercent } from '../lib/config.js';
+import {
+  processWithdrawal,
+  confirmWithdrawal,
+  cancelWithdrawal,
+  failWithdrawal,
+  reverseWithdrawal,
+} from '../lib/withdrawals.js';
 
 const router = Router();
 
@@ -150,7 +159,7 @@ router.get(
           contributionSubscriptions: {
             where: { status: 'active' },
             take: 1,
-            include: { plan: { select: { id: true, name: true, monthlyAmount: true } } },
+            include: { plan: { select: { id: true, name: true, weeklyAmount: true } } },
           },
         },
       }),
@@ -307,7 +316,7 @@ router.get(
               plan: {
                 id: activeSub.plan.id,
                 name: activeSub.plan.name,
-                monthlyAmount: activeSub.plan.monthlyAmount,
+                weeklyAmount: activeSub.plan.weeklyAmount,
               },
             }
           : null,
@@ -496,6 +505,109 @@ router.post(
   }),
 );
 
+// --- Wallet withdrawals (admin) ---
+// State machine lives in lib/withdrawals.js; these routes are thin, fully
+// protected drivers. Every transition is guarded and idempotent.
+
+const WITHDRAWAL_STATUSES = ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'REVERSED', 'CANCELLED'];
+
+router.get(
+  '/withdrawals',
+  asyncHandler(async (req, res) => {
+    const status = (req.query.status ?? '').toUpperCase();
+    if (status && !WITHDRAWAL_STATUSES.includes(status)) {
+      throw new AppError('Invalid withdrawal status filter', 400);
+    }
+    const page = Math.max(1, num(req.query.page, 1));
+    const pageSize = Math.min(100, Math.max(1, num(req.query.pageSize, 25)));
+
+    const where = status ? { status } : {};
+    const [total, withdrawals] = await Promise.all([
+      prisma.withdrawal.count({ where }),
+      prisma.withdrawal.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { user: { select: { id: true, fullName: true, email: true, phone: true } } },
+      }),
+    ]);
+
+    res.json({
+      withdrawals: withdrawals.map((w) => ({
+        id: w.id,
+        userId: w.userId,
+        user: w.user ?? null,
+        amountKobo: w.amountKobo,
+        bankName: w.bankName,
+        bankCode: w.bankCode,
+        accountNumber: w.accountNumber,
+        status: w.status,
+        provider: w.provider,
+        providerReference: w.providerReference,
+        failureReason: w.failureReason,
+        notes: w.notes,
+        reservedAt: w.reservedAt,
+        processedAt: w.processedAt,
+        completedAt: w.completedAt,
+        cancelledAt: w.cancelledAt,
+        createdAt: w.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+    });
+  }),
+);
+
+router.post(
+  '/withdrawals/:id/process',
+  asyncHandler(async (req, res) => {
+    const result = await processWithdrawal({ withdrawalId: req.params.id, adminId: req.user.id });
+    res.json(result);
+  }),
+);
+
+router.post(
+  '/withdrawals/:id/confirm',
+  asyncHandler(async (req, res) => {
+    const notes = (req.body?.notes ?? '').trim() || 'Confirmed by administrator';
+    const result = await confirmWithdrawal({
+      withdrawalId: req.params.id,
+      adminId: req.user.id,
+      notes,
+    });
+    res.json(result);
+  }),
+);
+
+router.post(
+  '/withdrawals/:id/cancel',
+  asyncHandler(async (req, res) => {
+    const reason = (req.body?.reason ?? '').trim() || 'Cancelled by administrator';
+    const result = await cancelWithdrawal({ withdrawalId: req.params.id, adminId: req.user.id, reason });
+    res.json(result);
+  }),
+);
+
+router.post(
+  '/withdrawals/:id/fail',
+  asyncHandler(async (req, res) => {
+    const reason = (req.body?.reason ?? '').trim() || 'Withdrawal processing failed';
+    const result = await failWithdrawal({ withdrawalId: req.params.id, adminId: req.user.id, reason });
+    res.json(result);
+  }),
+);
+
+router.post(
+  '/withdrawals/:id/reverse',
+  asyncHandler(async (req, res) => {
+    const reason = (req.body?.reason ?? '').trim() || 'Reversed by administrator';
+    const result = await reverseWithdrawal({ withdrawalId: req.params.id, adminId: req.user.id, reason });
+    res.json(result);
+  }),
+);
+
 // --- Company expenses ---
 
 router.post(
@@ -581,6 +693,303 @@ router.get(
       page,
       pageSize,
     });
+  }),
+);
+
+// --- Weekly AJO cohorts ---
+
+router.get(
+  '/cohorts',
+  asyncHandler(async (req, res) => {
+    const cohorts = await prisma.cohort.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        plan: { select: { id: true, name: true, weeklyAmount: true, cycleWeeks: true } },
+        _count: { select: { members: true } },
+        payouts: { select: { status: true } },
+      },
+    });
+
+    const rows = cohorts.map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      currentWeek: c.currentWeek,
+      size: c.size,
+      memberCount: c._count.members,
+      weeklyAmount: c.plan.weeklyAmount,
+      periodWeeks: c.plan.cycleWeeks,
+      planName: c.plan.name,
+      startedAt: c.startedAt,
+      completedAt: c.completedAt,
+      payoutCount: c.payouts.length,
+      paidPayouts: c.payouts.filter((p) => p.status === 'PAID').length,
+      created: c.createdAt,
+    }));
+
+    const settings = await getPlatformConfig();
+    res.json({ cohorts: rows, platformFeePercent: settings.platformFeePercent });
+  }),
+);
+
+router.get(
+  '/cohorts/:id',
+  asyncHandler(async (req, res) => {
+    const cohort = await prisma.cohort.findUnique({
+      where: { id: req.params.id },
+      include: {
+        plan: true,
+        members: {
+          orderBy: { position: 'asc' },
+          include: { user: { select: { id: true, fullName: true, email: true, activationStatus: true } } },
+        },
+        payouts: { orderBy: { weekIndex: 'asc' } },
+      },
+    });
+
+    if (!cohort) throw new AppError('Cohort not found', 404);
+
+    res.json({
+      cohort: {
+        id: cohort.id,
+        name: cohort.name,
+        status: cohort.status,
+        currentWeek: cohort.currentWeek,
+        size: cohort.size,
+        startedAt: cohort.startedAt,
+        completedAt: cohort.completedAt,
+        createdAt: cohort.createdAt,
+        plan: {
+          id: cohort.plan.id,
+          name: cohort.plan.name,
+          weeklyAmount: cohort.plan.weeklyAmount,
+          cycleWeeks: cohort.plan.cycleWeeks,
+        },
+        members: cohort.members.map((m) => ({
+          id: m.id,
+          userId: m.userId,
+          fullName: m.user.fullName,
+          email: m.user.email,
+          activated: m.user.activationStatus,
+          position: m.position,
+          status: m.status,
+          totalPaid: m.totalPaid,
+          lastPaidWeek: m.lastPaidWeek,
+          collectedWeek: m.collectedWeek,
+          joinedAt: m.joinedAt,
+        })),
+        payouts: cohort.payouts.map((p) => ({
+          id: p.id,
+          weekIndex: p.weekIndex,
+          userId: p.userId,
+          cohortMemberId: p.cohortMemberId,
+          grossAmount: p.grossAmount,
+          platformFee: p.platformFee,
+          netAmount: p.netAmount,
+          status: p.status,
+          provider: p.provider,
+          processedAt: p.processedAt,
+        })),
+      },
+    });
+  }),
+);
+
+// Process (and advance) the current week of a cohort. Idempotent: each week can
+// be settled at most once. Requires an explicit `confirm` flag so the action
+// is deliberate.
+router.post(
+  '/cohorts/:id/advance-week',
+  asyncHandler(async (req, res) => {
+    if (req.body?.confirm !== true) {
+      throw new AppError('confirm: true is required to advance a cohort week', 400);
+    }
+    const result = await processCohortWeek({ cohortId: req.params.id });
+    await logAudit({
+      adminId: req.user.id,
+      action: 'ADMIN_COHORT_WEEK_ADVANCED',
+      metadata: { cohortId: req.params.id, result },
+    });
+    res.json({ result });
+  }),
+);
+
+// Advance every active cohort one week (recovery/manual trigger).
+router.post(
+  '/cohorts/advance-all',
+  asyncHandler(async (req, res) => {
+    if (req.body?.confirm !== true) {
+      throw new AppError('confirm: true is required to advance all cohorts', 400);
+    }
+    const results = await runDueCohortPayouts();
+    await logAudit({
+      adminId: req.user.id,
+      action: 'ADMIN_ALL_COHORTS_ADVANCED',
+      metadata: { results },
+    });
+    res.json({ results });
+  }),
+);
+
+// --- Referral reward ledger ---
+
+router.get(
+  '/rewards',
+  asyncHandler(async (req, res) => {
+    const [byType, total, recent] = await Promise.all([
+      prisma.referralReward.groupBy({
+        by: ['type', 'level'],
+        _count: { _all: true },
+        _sum: { amountKobo: true },
+        orderBy: { type: 'asc' },
+      }),
+      prisma.referralReward.aggregate({ _sum: { amountKobo: true }, _count: { _all: true } }),
+      prisma.referralReward.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        include: {
+          user: { select: { id: true, fullName: true, email: true } },
+          sourceUser: { select: { id: true, fullName: true, email: true } },
+        },
+      }),
+    ]);
+
+    const config = await getPlatformConfig();
+    res.json({
+      summary: {
+        total: total._sum.amountKobo ?? 0,
+        count: total._count._all,
+      },
+      byType,
+      ladder: {
+        REGISTRATION: config.rewards?.REGISTRATION ?? {},
+        MONTHLY_SUBSCRIPTION: config.rewards?.MONTHLY_SUBSCRIPTION ?? {},
+      },
+      recent: recent.map((r) => ({
+        id: r.id,
+        type: r.type,
+        level: r.level,
+        amountKobo: r.amountKobo,
+        recipient: r.user ? { id: r.user.id, fullName: r.user.fullName, email: r.user.email } : null,
+        source: r.sourceUser
+          ? { id: r.sourceUser.id, fullName: r.sourceUser.fullName, email: r.sourceUser.email }
+          : null,
+        createdAt: r.createdAt,
+      })),
+    });
+  }),
+);
+
+// --- Webhook event log (idempotency + audit) ---
+
+router.get(
+  '/webhooks',
+  asyncHandler(async (req, res) => {
+    const page = Math.max(1, num(req.query.page, 1));
+    const pageSize = Math.min(100, Math.max(1, num(req.query.pageSize, 25)));
+    const [total, events] = await Promise.all([
+      prisma.webhookEvent.count(),
+      prisma.webhookEvent.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    res.json({
+      events: events.map((e) => ({
+        id: e.id,
+        provider: e.provider,
+        event: e.event,
+        reference: e.reference,
+        status: e.status,
+        message: e.message,
+        createdAt: e.createdAt,
+      })),
+      total,
+      page,
+      pageSize,
+    });
+  }),
+);
+
+// --- Platform settings ---
+
+const SETTING_INT_KEYS = ['registrationFeeKobo', 'monthlySubscriptionFeeKobo', 'cohortSize', 'mlmLevels'];
+const REWARD_TYPES = ['REGISTRATION', 'MONTHLY_SUBSCRIPTION'];
+
+router.get(
+  '/settings',
+  asyncHandler(async (req, res) => {
+    const config = await getPlatformConfig();
+    res.json({
+      settings: {
+        registrationFeeKobo: config.registrationFeeKobo,
+        monthlySubscriptionFeeKobo: config.monthlySubscriptionFeeKobo,
+        cohortSize: config.cohortSize,
+        mlmLevels: config.mlmLevels,
+        rewards: config.rewards,
+        platformFeePercent: config.platformFeePercent,
+        envPlatformFeePercent: process.env.WEEKLY_PLATFORM_FEE_PERCENTAGE ?? null,
+      },
+    });
+  }),
+);
+
+router.put(
+  '/settings',
+  asyncHandler(async (req, res) => {
+    const body = req.body ?? {};
+    const updates = [];
+
+    for (const key of SETTING_INT_KEYS) {
+      if (body[key] !== undefined) {
+        const n = Number(body[key]);
+        if (!Number.isInteger(n) || n <= 0) {
+          throw new AppError(`${key} must be a positive integer`, 400);
+        }
+        if (key === 'cohortSize' && (n < 2 || n > 200)) {
+          throw new AppError('cohortSize must be between 2 and 200', 400);
+        }
+        if (key === 'mlmLevels' && (n < 1 || n > 5)) {
+          throw new AppError('mlmLevels must be between 1 and 5', 400);
+        }
+        await setPlatformSetting(key, n);
+        updates.push(key);
+      }
+    }
+
+    if (body.rewards !== undefined) {
+      const existing = (await getPlatformConfig()).rewards ?? {};
+      const rewards = { ...existing, ...(body.rewards ?? {}) };
+      for (const type of REWARD_TYPES) {
+        const ladder = rewards[type];
+        if (!ladder) continue;
+        const clean = {};
+        for (const level of [1, 2, 3]) {
+          const n = Number(ladder[level]);
+          if (!Number.isInteger(n) || n < 0) {
+            throw new AppError(`rewards.${type}.${level} must be a non-negative integer`, 400);
+          }
+          clean[level] = n;
+        }
+        rewards[type] = clean;
+      }
+      await setPlatformSetting('rewards', rewards);
+      updates.push('rewards');
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid settings provided' });
+    }
+
+    await logAudit({
+      adminId: req.user.id,
+      action: 'ADMIN_SETTINGS_UPDATED',
+      metadata: { keys: updates },
+    });
+
+    const config = await getPlatformConfig();
+    res.json({ updated: updates, settings: config, platformFeePercent: platformFeePercent() });
   }),
 );
 

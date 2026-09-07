@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
+import { getPlatformConfig } from './lib/config.js';
+import { asyncHandler } from './middleware/error.js';
 import authRoutes from './routes/auth.routes.js';
 import paymentRoutes from './routes/payment.routes.js';
 import mlmRoutes from './routes/mlm.routes.js';
@@ -13,6 +15,7 @@ import auditRoutes from './routes/audit.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import serviceChargeRoutes from './routes/serviceCharge.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import cohortRoutes from './routes/cohort.routes.js';
 import { notFoundHandler, errorHandler } from './middleware/error.js';
 
 export function createApp() {
@@ -45,12 +48,23 @@ export function createApp() {
     res.json({ status: 'ok', service: 'laanipay-api', uptime: process.uptime() });
   });
 
-  app.get('/api/config', (req, res) => {
-    res.json({
-      emailVerificationEnabled: env.emailVerificationEnabled,
-      activationFeeKobo: env.activationFeeKobo,
-    });
-  });
+  app.get(
+    '/api/config',
+    asyncHandler(async (_req, res) => {
+      // Fees come from the authoritative platform_settings store (editable by
+      // admins) so the values shown on the checkout page match what is actually
+      // charged — never a stale env hardcode. env.activationFeeKobo remains the
+      // fallback default until an admin setting exists.
+      const config = await getPlatformConfig();
+      res.json({
+        emailVerificationEnabled: env.emailVerificationEnabled,
+        activationFeeKobo: config.registrationFeeKobo ?? env.activationFeeKobo,
+        monthlySubscriptionFeeKobo: config.monthlySubscriptionFeeKobo,
+        serviceChargeEnabled: env.serviceChargeEnabled,
+        withdrawalBankTransferEnabled: env.withdrawalBankTransferEnabled,
+      });
+    }),
+  );
 
   app.get('/health/ready', async (req, res) => {
     try {
@@ -70,6 +84,7 @@ export function createApp() {
   app.use('/api/admin', adminRoutes);
   app.use('/api/service-charges', serviceChargeRoutes);
   app.use('/api/notifications', notificationRoutes);
+  app.use('/api/cohorts', cohortRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
