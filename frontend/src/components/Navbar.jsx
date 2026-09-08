@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck, Bell, ChevronDown } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck, Bell, ChevronDown, Landmark } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../lib/api.js';
 import { initials } from '../lib/format.js';
@@ -122,6 +122,9 @@ export default function Navbar() {
       </NavLink>
       <NavLink to="/wallet" className={navClass}>
         Wallet
+      </NavLink>
+      <NavLink to="/withdraw" className={navClass}>
+        Withdraw
       </NavLink>
       <NavLink to="/mlm" className={navClass}>
         MLM
@@ -322,6 +325,9 @@ export default function Navbar() {
                   </Link>
                   <Link to="/wallet" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Wallet className="h-4 w-4" /> Wallet
+                  </Link>
+                  <Link to="/withdraw" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                    <Landmark className="h-4 w-4" /> Withdraw
                   </Link>
                   <Link to="/mlm" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                     <Network className="h-4 w-4" /> MLM Platform
