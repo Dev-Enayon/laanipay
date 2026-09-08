@@ -5,17 +5,17 @@ const sections = [
   {
     icon: ShieldCheck,
     title: '1. Nature of the Platform',
-    body: 'LaaniPay is a community savings and referral programme. By joining you are participating in a cooperative weekly savings round (Ajo) and a rewards programme tied to activation and subscription fees. LaaniPay is not a bank, a deposit-taking institution, an investment, or a provider of guaranteed returns. We do not promise, imply or guarantee any income, profit or rate of return.',
+    body: 'LaaniPay is a community savings and referral programme. By joining you are participating in a monthly contribution savings programme, a cooperative weekly savings round (Ajo) and a rewards programme tied to activation and subscription fees. LaaniPay is not a bank, a deposit-taking institution, an investment, or a provider of guaranteed returns. We do not promise, imply or guarantee any income, profit or rate of return.',
   },
   {
     icon: Wallet,
     title: '2. Fees',
-    body: 'A one-time account activation fee of ₦1,500 applies. A ₦300 membership subscription is deducted monthly from your wallet to keep your account and earning status active. Weekly contribution amounts are set by the plan you choose (₦1,000, ₦3,000 or ₦5,000 per week). A platform fee of up to 2% of each weekly pool is applied by us for operating the service. All fees are disclosed before you confirm any payment.',
+    body: 'A one-time account activation fee of ₦1,500 applies. A ₦300 membership subscription is deducted monthly from your wallet to keep your account and earning status active. Monthly contribution amounts are set by the plan you choose (₦1,000, ₦5,000, ₦10,000 or ₦20,000 per month) and weekly amounts by your weekly plan (₦1,000, ₦3,000 or ₦5,000 per week). A platform fee of up to 2% of each weekly pool is applied by us for operating the service. All fees are disclosed before you confirm any payment.',
   },
   {
     icon: RefreshCcw,
-    title: '3. Weekly Savings Rounds (Ajo)',
-    body: 'Each cohort is a fixed circle of members who contribute an equal amount every week. Each week the collected pool, minus our platform fee, is paid out to one member in rotation. You will only receive a payout for a week in which your own contributions are up to date. If you have a negative balance (you owe the pool), your payout is skipped until the amount is repaid. Payouts are credited to your LaaniPay wallet. Failure to pay when it is your turn to contribute may result in your removal from the cohort and forfeiture of the right to collect.',
+    title: '3. Contributions &amp; Weekly Savings Rounds (Ajo)',
+    body: 'Monthly contribution plans are a direct recurring savings: your chosen amount is recorded against your profile each month, building your contribution history with no fixed payout rotation. Each weekly cohort is a fixed circle of members who contribute an equal amount every week. Each week the collected pool, minus our platform fee, is paid out to one member in rotation. You will only receive a payout for a week in which your own contributions are up to date. If you have a negative balance (you owe the pool), your payout is skipped until the amount is repaid. Payouts are credited to your LaaniPay wallet. Failure to pay when it is your turn to contribute may result in your removal from the cohort and forfeiture of the right to collect.',
   },
   {
     icon: Coins,

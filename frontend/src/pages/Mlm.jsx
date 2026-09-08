@@ -303,8 +303,8 @@ export default function Mlm() {
               <p className="mt-3 text-sm leading-relaxed text-white/60">
                 Keep your earning status and rank progression active by maintaining a ₦300 monthly
                 subscription (deducted from your wallet). While your downline stays active each
-                month, their subscription keeps earning you level 1–3 rewards. Contribution on your
-                weekly AJO plan keeps your account verified automatically.
+                month, their subscription keeps earning you level 1–3 rewards. An active
+                contribution plan (monthly or weekly) keeps your account verified automatically.
               </p>
             </GlassCard>
           </Reveal>

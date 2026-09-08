@@ -32,9 +32,9 @@ const SERVICES = [
   },
   {
     icon: PiggyBank,
-    title: 'Weekly AJO Savings',
+    title: 'Monthly & Weekly Savings',
     description:
-      'Join a 52-week community savings circle with plans from ₦1,000/week — every member takes a turn to collect.',
+      'Save monthly on your own schedule, or join a 52-week community AJO circle from ₦1,000/week — every member takes a turn to collect.',
   },
 ];
 
@@ -42,7 +42,7 @@ const STEPS = [
   { icon: UserPlus, title: 'Create your account', text: 'Sign up in under a minute with your name, email and phone.' },
   { icon: ShieldCheck, title: 'Pay the activation fee', text: 'A one-time ₦1,500 activation secured by Paystack.' },
   { icon: Users, title: 'Invite and earn', text: 'Share your referral link and earn bonuses as your team grows.' },
-  { icon: Rocket, title: 'Save and collect', text: 'Contribute weekly with your circle, then take your turn to collect your savings.' },
+  { icon: Rocket, title: 'Save and collect', text: 'Contribute monthly or weekly with your circle, then take your turn to collect your savings.' },
 ];
 
 export default function Landing() {
@@ -70,7 +70,7 @@ export default function Landing() {
           </Reveal>
           <Reveal delay={200}>
             <p className="mt-6 max-w-2xl text-base leading-relaxed text-white/70 md:text-lg">
-              Telecom services, a powerful referral earning system and weekly AJO savings — all in
+              Telecom services, a powerful referral earning system and monthly &amp; weekly savings — all in
               one premium, trustworthy platform built for Nigeria.
             </p>
           </Reveal>
@@ -112,7 +112,7 @@ export default function Landing() {
             <p className="mt-5 text-slate-600">
               LaaniPay brings together everyday telecom services with a community-driven earning
               model. Activate once, then earn through referrals and build a savings culture with
-              weekly AJO rounds — all tracked live on your dashboard.
+              monthly contributions and weekly AJO rounds — all tracked live on your dashboard.
             </p>
           </div>
         </Reveal>
@@ -177,7 +177,7 @@ export default function Landing() {
               <h3 className="text-xl font-bold text-white">Our Mission</h3>
               <p className="mt-3 text-sm leading-relaxed text-white/60">
                 To empower every Nigerian with a simple, transparent platform to earn from telecom
-                services and build savings through community-driven weekly AJO rounds and referrals.
+                services and build savings through community-driven monthly and weekly AJO rounds and referrals.
               </p>
             </GlassCard>
           </Reveal>

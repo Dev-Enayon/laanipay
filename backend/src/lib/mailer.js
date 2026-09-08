@@ -197,7 +197,8 @@ export function sendRankUpEmail({ to, name, rank }) {
   });
 }
 
-export function sendContributionSubscribedEmail({ to, name, planName, monthlyAmount, nextPaymentDate }) {
+export function sendContributionSubscribedEmail({ to, name, planName, frequency = 'WEEKLY', amount = 0, nextPaymentDate }) {
+  const freqLabel = frequency === 'WEEKLY' ? 'Weekly' : 'Monthly';
   return sendMail({
     to,
     subject: `Contribution plan activated: ${planName}`,
@@ -207,12 +208,12 @@ export function sendContributionSubscribedEmail({ to, name, planName, monthlyAmo
        <p>Your contribution plan is now active:</p>
        <ul>
          <li>Plan: <strong>${planName}</strong></li>
-         <li>Monthly amount: <strong>${formatNaira(monthlyAmount)}</strong></li>
+         <li>${freqLabel} amount: <strong>${formatNaira(amount)}</strong></li>
          <li>Next payment date: <strong>${nextPaymentDate}</strong></li>
        </ul>
        ${button(env.frontendUrl + '/contribution', 'Manage contributions')}`,
     ),
-    text: `Hello ${name},\n\nYour ${planName} plan is active. Monthly amount: ${formatNaira(monthlyAmount)}.`,
+    text: `Hello ${name},\n\nYour ${planName} plan is active. ${freqLabel} amount: ${formatNaira(amount)}.`,
   });
 }
 

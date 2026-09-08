@@ -159,7 +159,7 @@ router.get(
           contributionSubscriptions: {
             where: { status: 'active' },
             take: 1,
-            include: { plan: { select: { id: true, name: true, weeklyAmount: true } } },
+            include: { plan: { select: { id: true, name: true, frequency: true, weeklyAmount: true, monthlyAmount: true } } },
           },
         },
       }),
@@ -313,10 +313,13 @@ router.get(
               id: activeSub.id,
               status: activeSub.status,
               nextPaymentDate: activeSub.nextPaymentDate,
+              frequency: activeSub.plan.frequency,
               plan: {
                 id: activeSub.plan.id,
                 name: activeSub.plan.name,
+                frequency: activeSub.plan.frequency,
                 weeklyAmount: activeSub.plan.weeklyAmount,
+                monthlyAmount: activeSub.plan.monthlyAmount,
               },
             }
           : null,
@@ -327,8 +330,11 @@ router.get(
           status: p.status,
           paidAt: p.paidAt,
           createdAt: p.createdAt,
+          weekIndex: p.weekIndex,
         })) ?? [],
+        paymentsPaid: verifiedPayments.length,
         monthsPaid: verifiedPayments.length,
+        frequency: activeSub?.plan.frequency ?? null,
         totalContributed: verifiedPayments.reduce((sum, p) => sum + p.amount, 0),
       },
       mlm: {

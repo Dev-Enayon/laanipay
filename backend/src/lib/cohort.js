@@ -115,7 +115,15 @@ export async function joinCohort({ tx, userId, planId, size = 52 }) {
 // Ensure a subscription points at a live (non-completed) cohort for its plan.
 // Fixes legacy rows created before cohorts existed and renews members whose
 // cohort has completed. Returns { cohort, member }.
+//
+// MONTHLY plans have no cohorts by design: this returns a null cohort so no
+// code path can ever drag a monthly subscription into the weekly cohort
+// engine, even if called defensively.
 export async function ensureSubscriptionCohort(tx, subscription) {
+  if (subscription?.plan?.frequency && subscription.plan.frequency !== 'WEEKLY') {
+    return { cohort: null, member: null };
+  }
+
   const cohort =
     subscription.cohortId && subscription.cohort?.status !== 'COMPLETED'
       ? subscription.cohort

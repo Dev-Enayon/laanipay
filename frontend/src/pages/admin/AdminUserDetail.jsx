@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { naira, formatDate, formatDateTime, initials } from '../../lib/format.js';
+import { frequencyLabel, periodSuffix, planAmount } from '../../lib/plans.js';
 import { StatusBadge, TxTypeBadge } from './badges.jsx';
 
 function ConfirmModal({ open, title, body, confirmLabel, danger, onClose, onConfirm, reason, setReason, requireReason, extra }) {
@@ -265,15 +266,21 @@ export default function AdminUserDetail() {
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Plan</p>
                   <p className="mt-1 font-bold text-slate-800">{contribution.subscription.plan.name}</p>
-                  <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(contribution.subscription.plan.weeklyAmount)}/wk</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">
+                    {frequencyLabel(contribution.subscription.frequency)} ·{' '}
+                    {naira(planAmount(contribution.subscription.plan))}
+                    {periodSuffix(contribution.subscription.frequency)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Next payment</p>
                   <p className="mt-1 font-bold text-slate-800">{formatDate(contribution.subscription.nextPaymentDate)}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Weeks paid</p>
-                  <p className="mt-1 font-bold text-slate-800">{contribution.monthsPaid}</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    {contribution.frequency === 'WEEKLY' ? 'Weeks paid' : 'Payments'}
+                  </p>
+                  <p className="mt-1 font-bold text-slate-800">{contribution.paymentsPaid ?? 0}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total contributed</p>

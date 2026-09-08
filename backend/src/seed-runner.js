@@ -2,8 +2,19 @@ import { prisma } from './lib/prisma.js';
 import bcrypt from 'bcrypt';
 import { PLATFORM_DEFAULTS } from './lib/config.js';
 
-// Weekly AJO contribution plans (₦1,000 / ₦3,000 / ₦5,000 per week, 52-week cycle).
-const CONTRIBUTION_PLANS = [
+// Monthly contribution plans — the original product model. These are the real
+// monthly rates and are PRESERVED exactly: existing plans are never updated or
+// deleted, and monthly_amount is never reused for a weekly value.
+const MONTHLY_PLANS = [
+  { name: 'Starter Saver', monthlyAmount: 100000 },
+  { name: 'Growth Saver', monthlyAmount: 500000 },
+  { name: 'Premium Saver', monthlyAmount: 1000000 },
+  { name: 'Diamond Saver', monthlyAmount: 2000000 },
+];
+
+// Weekly AJO contribution plans — an additional frequency that coexists with
+// the monthly model as separate plan rows (same names, frequency = WEEKLY).
+const WEEKLY_PLANS = [
   { name: 'Starter Saver', weeklyAmount: 100000, cycleWeeks: 52 },
   { name: 'Growth Saver', weeklyAmount: 300000, cycleWeeks: 52 },
   { name: 'Premium Saver', weeklyAmount: 500000, cycleWeeks: 52 },
@@ -21,34 +32,30 @@ const PLATFORM_SETTINGS = [
   { key: 'rewards', value: PLATFORM_DEFAULTS.rewards, description: '3-level referral rewards (kobo, by type)' },
 ];
 
-export default async function seed() {
-  // Legacy 4-plan monthly model is superseded by the weekly model. Remove the
-  // legacy plan only if it has no active subscription (protect existing data).
-  try {
-    await prisma.contributionPlan.deleteMany({
-      where: { name: 'Diamond Saver', subscriptions: { none: {} } },
-    });
-  } catch (err) {
-    console.warn('[seed] could not remove legacy plan:', err?.message ?? err);
-  }
+async function ensurePlan(plan) {
+  // Keyed on (name, frequency): the identical monthly and weekly names are
+  // distinct rows. `update: {}` means existing plan values (including any
+  // admin-tuned amounts) are NEVER overwritten by the seed.
+  const frequency = plan.monthlyAmount !== undefined ? 'MONTHLY' : 'WEEKLY';
+  const data = { name: plan.name, frequency };
+  if (plan.monthlyAmount !== undefined) data.monthlyAmount = plan.monthlyAmount;
+  if (plan.weeklyAmount !== undefined) data.weeklyAmount = plan.weeklyAmount;
+  if (plan.cycleWeeks !== undefined) data.cycleWeeks = plan.cycleWeeks;
+  await prisma.contributionPlan.upsert({
+    where: { name_frequency: { name: plan.name, frequency } },
+    update: {},
+    create: data,
+  });
+}
 
-  for (const plan of CONTRIBUTION_PLANS) {
-    await prisma.contributionPlan.upsert({
-      where: { name: plan.name },
-      update: {
-        weeklyAmount: plan.weeklyAmount,
-        monthlyAmount: plan.weeklyAmount, // legacy column kept in sync for old UIs
-        cycleWeeks: plan.cycleWeeks,
-      },
-      create: {
-        name: plan.name,
-        weeklyAmount: plan.weeklyAmount,
-        monthlyAmount: plan.weeklyAmount,
-        cycleWeeks: plan.cycleWeeks,
-      },
-    });
+export default async function seed() {
+  for (const plan of MONTHLY_PLANS) {
+    await ensurePlan(plan);
   }
-  console.log('[seed] Weekly contribution plans ready');
+  for (const plan of WEEKLY_PLANS) {
+    await ensurePlan(plan);
+  }
+  console.log('[seed] Monthly and weekly contribution plans ready');
 
   // Runtime config defaults. `update: {}` keeps any admin-tuned values intact.
   for (const setting of PLATFORM_SETTINGS) {

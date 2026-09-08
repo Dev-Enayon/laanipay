@@ -14,7 +14,7 @@ export default function Footer() {
           </div>
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/60">
             The LaaniPay Ecosystem combines telecom services, a referral earning system and
-            monthly contribution savings — built for a financially empowered Nigeria.
+            monthly and weekly contribution savings — built for a financially empowered Nigeria.
           </p>
         </div>
 

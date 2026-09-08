@@ -116,9 +116,14 @@ model MlmRank {
 
 model ContributionPlan {
   id            String   @id @default(cuid())
-  name          String   @unique
-  monthlyAmount Int      @map("monthly_amount")
-  weeklyAmount  Int      @map("weekly_amount")
+  name          String
+  // MONTHLY plans are billed/paid by their monthly_amount (the original,
+  // preserved model). WEEKLY plans are the added AJO frequency and use
+  // weekly_amount + cycleWeeks. Each frequency occupies its own amount column;
+  // the other column is NULL (no repurposing of monthly_amount for weekly).
+  frequency     String   @default("MONTHLY") // MONTHLY | WEEKLY
+  monthlyAmount Int?     @map("monthly_amount")
+  weeklyAmount  Int?     @map("weekly_amount")
   cycleWeeks    Int      @default(52) @map("cycle_weeks")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -126,6 +131,8 @@ model ContributionPlan {
   cohorts        Cohort[]
   payouts        Payout[]
 
+  @@unique([name, frequency])
+  @@index([frequency])
   @@map("contribution_plans")
 }
 

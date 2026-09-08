@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira, formatDate, formatDateTime } from '../lib/format.js';
+import { frequencyLabel, periodSuffix, planAmount } from '../lib/plans.js';
 import Reveal from '../components/Reveal.jsx';
 
 export default function Wallet() {
@@ -39,8 +40,10 @@ export default function Wallet() {
     loadWithdrawals();
   }, []);
 
-  const progressPercent = Math.round((overview?.progress ?? 0) * 100);
-  const subscription = overview?.subscription;
+  const subscriptions = overview?.subscriptions ?? [];
+  const allHistory = subscriptions
+    .flatMap((s) => (s.history ?? []).map((h) => ({ ...h, plan: s.plan })))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const balance = wallet?.balance ?? 0;
   const heldBalance = wallet?.heldBalance ?? 0;
   const available = balance;
@@ -122,8 +125,12 @@ export default function Wallet() {
                   {naira(wallet.totalContributed ?? 0)}
                 </p>
                 <p className="relative mt-2 text-xs text-slate-400">
-                  From verified weekly AJO contributions
-                  {subscription ? ` · ${overview?.weeksPaid ?? 0}/${overview?.cycleWeeks ?? 52} weeks` : ''}
+                  From verified contribution payments
+                  {subscriptions.length > 0
+                    ? ` · ${subscriptions
+                        .map((s) => `${s.plan?.name} ${naira(planAmount(s.plan))}${periodSuffix(s.plan?.frequency)}`)}
+                        .join(' · ')}`
+                    : ''}
                 </p>
               </div>
             </Reveal>
@@ -266,24 +273,46 @@ export default function Wallet() {
                   <WalletIcon className="h-5 w-5 text-primary" />
                   <h3 className="text-base font-bold text-slate-900">Savings progress</h3>
                 </div>
-                {subscription ? (
+                {subscriptions.length > 0 ? (
                   <>
-                    <div className="mt-4 h-3 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary to-neon transition-all duration-700"
-                        style={{ width: `${progressPercent}%` }}
-                      />
+                    <div className="mt-4 space-y-4">
+                      {subscriptions.map((s) => {
+                        const weekly = s.plan?.frequency === 'WEEKLY';
+                        const pct = Math.round((s.progress ?? 0) * 100);
+                        return (
+                          <div key={s.id}>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-semibold text-slate-800">{s.plan?.name}</span>
+                              <span className="text-xs font-medium text-slate-500">
+                                {frequencyLabel(s.plan?.frequency)} · {naira(planAmount(s.plan))}
+                                {periodSuffix(s.plan?.frequency)}
+                              </span>
+                            </div>
+                            {weekly ? (
+                              <>
+                                <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className="h-full rounded-full bg-gradient-to-r from-primary to-neon transition-all duration-700"
+                                    style={{ width: `${pct}%` }}
+                                  />
+                                </div>
+                                <div className="mt-1.5 flex items-center justify-between text-xs text-slate-400">
+                                  <span>
+                                    {s.weeksPaid ?? 0}/{s.cycleWeeks ?? 52} weeks
+                                  </span>
+                                  <span>{naira(s.totalContributed ?? 0)} contributed</span>
+                                </div>
+                              </>
+                            ) : (
+                              <p className="mt-1.5 text-xs text-slate-400">
+                                {s.paymentsPaid ?? 0} payment{(s.paymentsPaid ?? 0) === 1 ? '' : 's'} ·{' '}
+                                {naira(s.totalContributed ?? 0)} contributed
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                      <span>{progressPercent}% of 52-week cycle</span>
-                      <span>
-                        {overview?.weeksPaid ?? 0}/{overview?.cycleWeeks ?? 52} weeks
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-slate-500">
-                      Plan: <span className="font-semibold text-slate-800">{subscription.plan.name}</span> ·{' '}
-                      {naira(subscription.plan.weeklyAmount)}/week
-                    </p>
                     <Link to="/contribution" className="btn-primary mt-5 w-full">
                       Manage contributions <ArrowRight className="h-4 w-4" />
                     </Link>
@@ -307,11 +336,11 @@ export default function Wallet() {
                   <History className="h-5 w-5 text-primary" />
                   <h3 className="text-base font-bold text-slate-900">Recent contributions</h3>
                 </div>
-                {overview?.history?.length === 0 || !overview?.history ? (
+                {allHistory.length === 0 ? (
                   <p className="mt-3 text-sm text-slate-500">No contributions yet.</p>
                 ) : (
                   <ul className="mt-3 space-y-3">
-                    {overview.history.slice(0, 5).map((payment) => (
+                    {allHistory.slice(0, 5).map((payment) => (
                       <li
                         key={payment.id}
                         className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3"
@@ -321,7 +350,7 @@ export default function Wallet() {
                             {naira(payment.amount)}
                           </p>
                           <p className="text-xs text-slate-400">
-                            {formatDate(payment.paidAt ?? payment.createdAt)}
+                            {payment.plan?.name ?? ''} · {formatDate(payment.paidAt ?? payment.createdAt)}
                           </p>
                         </div>
                         {payment.status === 'verified' ? (

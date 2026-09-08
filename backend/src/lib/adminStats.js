@@ -226,6 +226,7 @@ export async function computeSummary() {
     txWithdrawals,
     cohortCounts,
     cohortMemberCount,
+    contributionFreqRows,
   ] = await Promise.all([
     prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
     prisma.user.count(),
@@ -262,10 +263,29 @@ export async function computeSummary() {
     }),
     prisma.cohort.groupBy({ by: ['status'], _count: { _all: true } }),
     prisma.cohortMember.count(),
+    prisma.$queryRaw`
+      SELECT COALESCE("p"."frequency", 'MONTHLY') AS frequency,
+             COUNT(*)::bigint AS count,
+             COALESCE(SUM("cp"."amount"), 0)::bigint AS amount
+      FROM "contribution_payments" "cp"
+      JOIN "contribution_subscriptions" "cs" ON "cs"."id" = "cp"."subscription_id"
+      JOIN "contribution_plans" "p" ON "p"."id" = "cs"."plan_id"
+      WHERE "cp"."status" = 'verified'
+      GROUP BY 1`,
   ]);
 
   const statusMap = Object.fromEntries(statusCounts.map((s) => [s.status, s._count._all]));
   const cohortMap = Object.fromEntries(cohortCounts.map((c) => [c.status, c._count._all]));
+
+  const contribByFreq = {
+    MONTHLY: { count: 0, amount: 0 },
+    WEEKLY: { count: 0, amount: 0 },
+  };
+  for (const row of contributionFreqRows) {
+    const freq = row.frequency === 'WEEKLY' ? 'WEEKLY' : 'MONTHLY';
+    contribByFreq[freq].count += Number(row.count ?? 0);
+    contribByFreq[freq].amount += Number(row.amount ?? 0);
+  }
 
   const totalDeposits = txDeposits._sum.amount ?? 0;
   const totalWithdrawals = txWithdrawals._sum.amount ?? 0;
@@ -309,6 +329,7 @@ export async function computeSummary() {
     },
     platformFees: platformFeeRevenue._sum.amount ?? 0,
     payoutDisbursements: disbursements,
+    contributionsByFrequency: contribByFreq,
   };
 }
 

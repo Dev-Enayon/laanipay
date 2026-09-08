@@ -241,13 +241,13 @@ export default function Dashboard() {
             <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-neon/15 transition-colors group-hover:bg-neon sm:h-14 sm:w-14">
               <PiggyBank className="h-6 w-6 text-emerald-600 transition-colors group-hover:text-ink sm:h-7 sm:w-7" />
             </div>
-            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Weekly AJO Platform</h3>
+            <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Contributions Platform</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Join a 52-member weekly AJO cohort from ₦1,000/week and collect the pool when it is
-              your turn.
+              Save monthly or join a 52-member weekly AJO cohort from ₦1,000/week and collect the pool when
+              it is your turn.
             </p>
             <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
-              Open AJO platform →
+              Open contributions →
             </span>
           </div>
         </Link>

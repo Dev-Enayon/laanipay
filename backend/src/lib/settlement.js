@@ -9,13 +9,7 @@ import {
   sendRankUpEmail,
   sendContributionReceiptEmail,
 } from './mailer.js';
-
-// Adds n weeks to a Date, preserving the day-of-month as best as possible.
-function addWeeks(date, weeks = 1) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + weeks * 7);
-  return d;
-}
+import { addContributionPeriod, planFrequency } from './contributions.js';
 
 // Settles a payment reference against Paystack and, on success, records the
 // outcome in the database. Idempotent and safe under concurrent calls
@@ -125,7 +119,11 @@ export async function settlePayment({ reference, expectedUserId }) {
       return { verified: false, kind: 'contribution', reason: 'Payment not successful' };
     }
 
-    const nextPaymentDate = addWeeks(contribution.subscription.nextPaymentDate, 1);
+    // nextPaymentDate advances by one contribution period: +1 month for
+    // MONTHLY plans, +1 week for WEEKLY plans.
+    const plan = contribution.subscription.plan;
+    const frequency = planFrequency(plan);
+    const nextPaymentDate = addContributionPeriod(contribution.subscription.nextPaymentDate, plan);
 
     let freshlyVerified = false;
     let verifier = { weekIndex: null, cohortId: null, cohortName: null };
@@ -139,9 +137,16 @@ export async function settlePayment({ reference, expectedUserId }) {
       if (claimed.count === 1) {
         freshlyVerified = true;
 
-        // Weekly cycle + AJO cohort attribution.
-        const { cohort } = await ensureSubscriptionCohort(tx, contribution.subscription);
-        const weekIndex = cohort?.status === 'ACTIVE' ? cohort.currentWeek : null;
+        // Weekly cycle + AJO cohort attribution only; monthly contributions
+        // have no cohort (cohort.js also guards this defensively).
+        let cohort = null;
+        let weekIndex = null;
+        if (frequency === 'WEEKLY') {
+          const joined = await ensureSubscriptionCohort(tx, contribution.subscription);
+          cohort = joined.cohort;
+          weekIndex = cohort?.status === 'ACTIVE' ? cohort.currentWeek : null;
+        }
+
         verifier = {
           weekIndex,
           cohortId: cohort?.id ?? null,
@@ -153,11 +158,11 @@ export async function settlePayment({ reference, expectedUserId }) {
           data: { weekIndex, cohortId: cohort?.id ?? null },
         });
 
-        if (cohort) {
+        if (cohort && weekIndex) {
           const memberRow = await tx.cohortMember.findFirst({
             where: { cohortId: cohort.id, userId: contribution.subscription.userId },
           });
-          if (memberRow && weekIndex) {
+          if (memberRow) {
             await tx.cohortMember.update({
               where: { id: memberRow.id },
               data: {
@@ -184,9 +189,10 @@ export async function settlePayment({ reference, expectedUserId }) {
             balanceAfter: wallet.balance,
             status: 'completed',
             reference: contribution.paystackReference,
-            description: `Weekly contribution — ${contribution.subscription.plan?.name ?? 'Contribution plan'}`,
+            description: `${frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution — ${plan?.name ?? 'Contribution plan'}`,
             metadata: {
               planId: contribution.subscription.planId,
+              frequency,
               weekIndex,
               cohortId: cohort?.id ?? null,
             },
@@ -199,6 +205,7 @@ export async function settlePayment({ reference, expectedUserId }) {
             metadata: {
               reference,
               amount: contribution.amount,
+              frequency,
               weekIndex,
               cohortId: cohort?.id ?? null,
             },
@@ -213,7 +220,7 @@ export async function settlePayment({ reference, expectedUserId }) {
         sendContributionReceiptEmail({
           to: user.email,
           name: user.fullName,
-          planName: contribution.subscription.plan?.name ?? 'Contribution plan',
+          planName: plan?.name ?? 'Contribution plan',
           amount: contribution.amount,
           reference,
           nextPaymentDate: nextPaymentDate.toISOString().split('T')[0],

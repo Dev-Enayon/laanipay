@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { naira, formatDate } from '../../lib/format.js';
+import { frequencyLabel, periodSuffix, planAmount } from '../../lib/plans.js';
 import { StatusBadge } from './badges.jsx';
 
 const PAGE_SIZE = 15;
@@ -98,7 +99,7 @@ export default function AdminUsers() {
             <option value="">All plans</option>
             {plans.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} ({naira(p.weeklyAmount)})
+                {p.name} · {frequencyLabel(p.frequency)} ({naira(planAmount(p))})
               </option>
             ))}
           </select>
@@ -175,7 +176,10 @@ export default function AdminUsers() {
                     {u.plan ? (
                       <div>
                         <p className="font-bold text-slate-700">{u.plan.name}</p>
-                        <p className="mt-0.5 text-xs font-medium text-slate-500">{naira(u.plan.weeklyAmount)}/wk</p>
+                        <p className="mt-0.5 text-xs font-medium text-slate-500">
+                          {frequencyLabel(u.plan.frequency)} · {naira(planAmount(u.plan))}
+                          {periodSuffix(u.plan.frequency)}
+                        </p>
                       </div>
                     ) : (
                       <span className="text-sm text-slate-400">—</span>
