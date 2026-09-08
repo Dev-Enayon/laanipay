@@ -314,6 +314,7 @@ router.get(
               status: activeSub.status,
               nextPaymentDate: activeSub.nextPaymentDate,
               frequency: activeSub.plan.frequency,
+              amountKobo: activeSub.amountKobo,
               plan: {
                 id: activeSub.plan.id,
                 name: activeSub.plan.name,

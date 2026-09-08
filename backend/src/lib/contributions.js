@@ -22,6 +22,15 @@ export function planAmount(plan) {
   return plan.monthlyAmount ?? 0;
 }
 
+// The amount a user actually pays for a single contribution period of their
+// subscription. A subscription carries an amountKobo snapshot (captured at
+// subscribe time and backfilled for existing subscriptions when tiers change),
+// so their financial terms are frozen; falls back to the live plan amount for
+// rows created before the snapshot column existed.
+export function subscriptionAmount(subscription) {
+  return subscription?.amountKobo ?? planAmount(subscription?.plan);
+}
+
 export function frequencyLabel(frequency) {
   return frequency === 'WEEKLY' ? 'Weekly' : 'Monthly';
 }

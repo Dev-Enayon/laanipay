@@ -16,6 +16,7 @@ import {
   planAmount,
   planFrequency,
   periodSuffix,
+  subscriptionAmount,
 } from '../lib/contributions.js';
 
 const router = Router();
@@ -101,6 +102,9 @@ router.post(
           planId: plan.id,
           cohortId: joined?.cohort?.id ?? null,
           status: 'active',
+          // Freeze the amount the user agreed to at subscribe time so later
+          // plan tier changes never alter an existing subscription's terms.
+          amountKobo: planAmount(plan),
           nextPaymentDate,
         },
         include: { plan: true, cohort: true },
@@ -180,7 +184,7 @@ router.patch(
 
     const updated = await prisma.contributionSubscription.update({
       where: { id: subscription.id },
-      data: { planId: plan.id, cohortId: null },
+      data: { planId: plan.id, cohortId: null, amountKobo: planAmount(plan) },
       include: { plan: true, cohort: true },
     });
 
@@ -349,7 +353,7 @@ router.post(
     }
 
     const frequency = planFrequency(subscription.plan);
-    const amount = planAmount(subscription.plan);
+    const amount = subscriptionAmount(subscription);
     const isWeekly = frequency === 'WEEKLY';
     const weekIndex = isWeekly && subscription.cohort?.status === 'ACTIVE' ? subscription.cohort.currentWeek : null;
     const cohortId = isWeekly ? (subscription.cohort?.id ?? null) : null;
@@ -405,6 +409,8 @@ function serializeSubscription(subscription) {
     nextPaymentDate: subscription.nextPaymentDate,
     cohortId: subscription.cohortId,
     frequency,
+    amount: subscriptionAmount(subscription),
+    amountKobo: subscription.amountKobo ?? null,
     plan: {
       id: subscription.plan.id,
       name: subscription.plan.name,

@@ -10,7 +10,7 @@ const sections = [
   {
     icon: Wallet,
     title: '2. Fees',
-    body: 'A one-time account activation fee of ₦1,500 applies. A ₦300 membership subscription is deducted monthly from your wallet to keep your account and earning status active. Monthly contribution amounts are set by the plan you choose (₦1,000, ₦5,000, ₦10,000 or ₦20,000 per month) and weekly amounts by your weekly plan (₦1,000, ₦3,000 or ₦5,000 per week). A platform fee of up to 2% of each weekly pool is applied by us for operating the service. All fees are disclosed before you confirm any payment.',
+    body: 'A one-time account activation fee of ₦1,500 applies. A ₦300 membership subscription is deducted monthly from your wallet to keep your account and earning status active. Monthly contribution amounts are set by the plan you choose (₦10,000, ₦15,000, ₦20,000, ₦25,000 or ₦30,000 per month) and weekly amounts by your weekly plan (₦1,000, ₦3,000 or ₦5,000 per week). A platform fee of up to 2% of each weekly pool is applied by us for operating the service. All fees are disclosed before you confirm any payment.',
   },
   {
     icon: RefreshCcw,

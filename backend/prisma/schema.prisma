@@ -142,6 +142,13 @@ model ContributionSubscription {
   planId          String   @map("plan_id")
   cohortId        String?  @map("cohort_id")
   status          String   @default("active")
+  // Snapshot of the amount owed per contribution period, captured when the
+  // subscription is created (and backfilled for existing subscriptions when
+  // monthly tiers change). Payment amount = `amountKobo ?? planAmount(plan)`,
+  // so a pre-existing subscription keeps its original financial terms even if
+  // the plan's tier is later updated. Weekly subscriptions carry their
+  // weekly_amount here; the weekly amounts are unchanged by tier updates.
+  amountKobo      Int?     @map("amount_kobo")
   nextPaymentDate DateTime @map("next_payment_date")
   createdAt       DateTime @default(now()) @map("created_at")
 

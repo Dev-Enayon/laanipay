@@ -128,7 +128,7 @@ export default function Wallet() {
                   From verified contribution payments
                   {subscriptions.length > 0
                     ? ` · ${subscriptions
-                        .map((s) => `${s.plan?.name} ${naira(planAmount(s.plan))}${periodSuffix(s.plan?.frequency)}`)}
+                        .map((s) => `${s.plan?.name} ${naira(s.amount ?? planAmount(s.plan))}${periodSuffix(s.plan?.frequency)}`)}
                         .join(' · ')}`
                     : ''}
                 </p>
@@ -284,7 +284,7 @@ export default function Wallet() {
                             <div className="flex items-center justify-between text-sm">
                               <span className="font-semibold text-slate-800">{s.plan?.name}</span>
                               <span className="text-xs font-medium text-slate-500">
-                                {frequencyLabel(s.plan?.frequency)} · {naira(planAmount(s.plan))}
+                                {frequencyLabel(s.plan?.frequency)} · {naira(s.amount ?? planAmount(s.plan))}
                                 {periodSuffix(s.plan?.frequency)}
                               </span>
                             </div>

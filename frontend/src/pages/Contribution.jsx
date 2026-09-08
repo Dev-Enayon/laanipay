@@ -283,7 +283,7 @@ function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onShowPlans
             </span>
             <h3 className="mt-1 text-lg font-bold text-slate-900">{subscription.plan?.name}</h3>
             <p className="text-sm text-slate-500">
-              {naira(subscription.plan?.amount ?? subscription.plan?.weeklyAmount ?? 0)}
+              {naira(subscription.amount ?? subscription.plan?.amount ?? subscription.plan?.weeklyAmount ?? 0)}
               {subscription.plan?.periodSuffix ?? periodSuffix(subscription.plan?.frequency)} · {subscription.plan?.frequency === 'WEEKLY' ? `${subscription.plan?.cycleWeeks ?? CYCLE_WEEKS}-week cycle` : 'Monthly recurring plan'}
             </p>
           </div>
@@ -381,7 +381,7 @@ function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onShowPlans
         </div>
 
         <button onClick={() => onPay(subscription)} disabled={busy} className="btn-primary mt-6 w-full sm:w-auto">
-          {busy ? 'Processing...' : `Pay ${naira(subscription.plan?.amount ?? 0)} now`}
+          {busy ? 'Processing...' : `Pay ${naira(subscription.amount ?? subscription.plan?.amount ?? 0)} now`}
         </button>
         <button
           onClick={onShowPlans}
@@ -423,7 +423,7 @@ function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onShowPlans
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            You contribute {naira(subscription.plan?.amount ?? 0)} every month. Your payment history is below.
+            You contribute {naira(subscription.amount ?? subscription.plan?.amount ?? 0)} every month. Your payment history is below.
           </p>
         </div>
       )}

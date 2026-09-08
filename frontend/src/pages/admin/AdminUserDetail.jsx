@@ -268,7 +268,7 @@ export default function AdminUserDetail() {
                   <p className="mt-1 font-bold text-slate-800">{contribution.subscription.plan.name}</p>
                   <p className="mt-0.5 text-xs font-medium text-slate-500">
                     {frequencyLabel(contribution.subscription.frequency)} ·{' '}
-                    {naira(planAmount(contribution.subscription.plan))}
+                    {naira(contribution.subscription.amountKobo ?? planAmount(contribution.subscription.plan))}
                     {periodSuffix(contribution.subscription.frequency)}
                   </p>
                 </div>

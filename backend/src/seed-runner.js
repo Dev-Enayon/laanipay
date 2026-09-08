@@ -2,14 +2,18 @@ import { prisma } from './lib/prisma.js';
 import bcrypt from 'bcrypt';
 import { PLATFORM_DEFAULTS } from './lib/config.js';
 
-// Monthly contribution plans — the original product model. These are the real
-// monthly rates and are PRESERVED exactly: existing plans are never updated or
-// deleted, and monthly_amount is never reused for a weekly value.
+// Monthly contribution plans — the original product model. These five tiers
+// are the single source of truth for the available monthly amounts. Existing
+// monthly plans are UPDATED to their tier (deliberate product decision, not a
+// blanket overwrite); existing subscriptions are protected by their
+// amountKobo snapshot, so changing the tier never changes what a current
+// subscriber pays. Weekly plans are never touched by the monthly tiers.
 const MONTHLY_PLANS = [
-  { name: 'Starter Saver', monthlyAmount: 100000 },
-  { name: 'Growth Saver', monthlyAmount: 500000 },
-  { name: 'Premium Saver', monthlyAmount: 1000000 },
-  { name: 'Diamond Saver', monthlyAmount: 2000000 },
+  { name: 'Starter Saver', monthlyAmount: 1000000 },
+  { name: 'Growth Saver', monthlyAmount: 1500000 },
+  { name: 'Premium Saver', monthlyAmount: 2000000 },
+  { name: 'Diamond Saver', monthlyAmount: 2500000 },
+  { name: 'Elite Saver', monthlyAmount: 3000000 },
 ];
 
 // Weekly AJO contribution plans — an additional frequency that coexists with
@@ -34,16 +38,25 @@ const PLATFORM_SETTINGS = [
 
 async function ensurePlan(plan) {
   // Keyed on (name, frequency): the identical monthly and weekly names are
-  // distinct rows. `update: {}` means existing plan values (including any
-  // admin-tuned amounts) are NEVER overwritten by the seed.
+  // distinct rows. The update payload ONLY carries the amount that belongs to
+  // this plan's frequency:
+  //   * MONTHLY plans are the product-defined tiers and are maintained to those
+  //     exact amounts (existing subscriptions are protected by their amountKobo
+  //     snapshot, which this never touches).
+  //   * WEEKLY plans use `update: {}` so their amounts (and any admin-tuned
+  //     weekly rates) are NEVER overwritten by the seed.
   const frequency = plan.monthlyAmount !== undefined ? 'MONTHLY' : 'WEEKLY';
   const data = { name: plan.name, frequency };
-  if (plan.monthlyAmount !== undefined) data.monthlyAmount = plan.monthlyAmount;
+  const update = {};
+  if (plan.monthlyAmount !== undefined) {
+    data.monthlyAmount = plan.monthlyAmount;
+    update.monthlyAmount = plan.monthlyAmount;
+  }
   if (plan.weeklyAmount !== undefined) data.weeklyAmount = plan.weeklyAmount;
   if (plan.cycleWeeks !== undefined) data.cycleWeeks = plan.cycleWeeks;
   await prisma.contributionPlan.upsert({
     where: { name_frequency: { name: plan.name, frequency } },
-    update: {},
+    update,
     create: data,
   });
 }
