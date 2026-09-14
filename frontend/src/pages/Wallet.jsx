@@ -63,7 +63,28 @@ export default function Wallet() {
       const data = await api('/wallet/virtual-account', { method: 'POST' });
       setVa(data?.virtualAccount ?? null);
     } catch (err) {
-      setVaError(err.message ?? 'Could not create your account number');
+      // Server-side DVA errors carry a stable `code`; 5xx message bodies are
+      // masked, so translate the code into something a user can act on.
+      const friendly = {
+        DVA_DISABLED: 'Bank-transfer funding is not available yet.',
+        DVA_REQUIRES_VALIDATION:
+          'Paystack requires customer validation (BVN) before a virtual account can be issued for this business. This is not supported yet.',
+        DVA_NOT_AVAILABLE:
+          'Virtual accounts are not available for this business account yet. Contact support.',
+        DVA_CONFIGURATION_ERROR:
+          'Wallet funding is not fully configured on the server. Contact support.',
+        PAYSTACK_AUTH_ERROR: 'Payment provider authorisation error. Please try again later.',
+        PAYSTACK_FORBIDDEN: 'Payment provider rejected this request. Please try again later.',
+        PAYSTACK_SERVICE_ERROR: 'Payment provider is temporarily unavailable. Please try again later.',
+      };
+      const coded = friendly[err?.code];
+      const message = err?.message ?? 'Could not create your account number';
+      setVaError(
+        coded ??
+          (/internal server/i.test(message)
+            ? 'Could not create your account number. Please try again later.'
+            : message),
+      );
     } finally {
       setVaBusy(false);
     }

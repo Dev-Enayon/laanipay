@@ -11,10 +11,11 @@ function requireApiUrl() {
 }
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, code) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -99,7 +100,7 @@ export async function api(path, { method = 'GET', body } = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(data?.error ?? 'Request failed', res.status);
+    throw new ApiError(data?.error ?? 'Request failed', res.status, data?.code);
   }
   return data;
 }

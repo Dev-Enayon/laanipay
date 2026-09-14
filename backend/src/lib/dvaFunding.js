@@ -31,10 +31,89 @@ function isUniqueViolation(err) {
 }
 
 // True when a Paystack error indicates the DVA cannot be created until the
-// customer is identified (Financial-Services merchant requirement). Surfaces
-// as DVA_REQUIRES_VALIDATION; BVN capture is out of scope for this phase.
+// customer is identified/validated (Financial-Services merchant requirement).
+// Matches the classic Paystack messages: "Customer identification is required"
+// and the *validation* variants ("Kindly ensure that your customer is
+// validated.") that are also returned for this business type. Surfaces as
+// DVA_REQUIRES_VALIDATION; BVN capture is out of scope for this phase.
 export function isIdentificationRequiredError(err) {
-  return err instanceof PaystackError && /identif/i.test(err.message);
+  return err instanceof PaystackError && /(identif|validat)/i.test(err.message);
+}
+
+// Prisma raises P2021/P2022 when the 0012 DVA migration has not been applied to
+// the connected database — the most common cause of a brand-new feature failing
+// in production with a generic HTTP 500.
+function isMigrationNotApplied(err) {
+  return (
+    err?.code === 'P2021' ||
+    err?.code === 'P2022' ||
+    /table .* does not exist|column .* does not exist|relation .* does not exist/i.test(
+      `${err?.message ?? ''}`,
+    )
+  );
+}
+
+// Converts provisioning failures into safe, typed AppErrors so the frontend
+// receives a useful code (and an appropriate HTTP status) instead of a masked
+// 500 "Internal server error". Detailed Paystack responses stay server-side.
+// Unknown errors (e.g. transient DB failures) are returned unchanged so the
+// global error handler still logs them and responds 500.
+export function mapProvisionError(err) {
+  if (isIdentificationRequiredError(err)) {
+    return new AppError(
+      'Paystack requires customer validation before a virtual account can be created for this business. Customer validation (BVN capture) is not supported yet.',
+      400,
+      'DVA_REQUIRES_VALIDATION',
+    );
+  }
+
+  if (err instanceof PaystackError) {
+    const message = `${err.message ?? ''}`;
+    const code = err.code ?? 'PAYSTACK_SERVICE_ERROR';
+
+    // Paystack: "You need to add a bank account for Dedicated Virtual Account"
+    // (or similar) — the merchant has no eligible collection bank configured.
+    if (/add a bank account|bank account for/i.test(message)) {
+      return new AppError(
+        'Paystack does not offer virtual accounts for this business account yet.',
+        400,
+        'DVA_NOT_AVAILABLE',
+      );
+    }
+
+    // Paystack rejected the configured preferred bank (e.g. invalid slug or
+    // not permitted for this merchant). This is a server configuration problem.
+    if (/invalid.*bank|bank.*invalid|preferred/i.test(message)) {
+      return new AppError(
+        'The virtual-account bank configured on the server is not accepted by Paystack.',
+        500,
+        'DVA_CONFIGURATION_ERROR',
+      );
+    }
+
+    // Client-facing status policy: bad-request/not-found details may be shown
+    // directly; auth/forbidden/service failures are masked server-side (the
+    // code still tells the frontend what happened) and are never returned as
+    // 401/403 so the frontend token-refresh flow is not triggered.
+    const status = ['PAYSTACK_BAD_REQUEST', 'PAYSTACK_NOT_FOUND'].includes(code)
+      ? err.statusCode >= 400 && err.statusCode < 500
+        ? err.statusCode
+        : 400
+      : 502;
+
+    return new AppError(message, status, code);
+  }
+
+  if (isMigrationNotApplied(err)) {
+    console.error('[dva] database migration 0012 appears not to be applied:', err?.message);
+    return new AppError(
+      'Wallet funding is not fully deployed on the server (database migration required).',
+      500,
+      'DVA_CONFIGURATION_ERROR',
+    );
+  }
+
+  return err;
 }
 
 // Pure classification of an incoming `charge.success` deposit payload —
@@ -141,17 +220,6 @@ export async function getOrCreateVirtualAccount(user) {
       { maxWait: 15000, timeout: 60000 },
     );
   } catch (err) {
-    // Paystack requires customer identification for Financial-Services
-    // merchants before a DVA can be generated. Surfaced clearly; BVN capture
-    // is out of scope for this phase (approved decision).
-    if (isIdentificationRequiredError(err)) {
-      throw new AppError(
-        'Paystack requires customer validation before a virtual account can be created for this business. Customer validation (BVN capture) is not supported yet.',
-        400,
-        'DVA_REQUIRES_VALIDATION',
-      );
-    }
-
     if (isUniqueViolation(err)) {
       // Another path provisioned the same account moments ago — return it.
       // (Outside the rolled-back transaction, so the outer prisma client is
@@ -162,7 +230,10 @@ export async function getOrCreateVirtualAccount(user) {
       });
       if (row) return row;
     }
-    throw err;
+    // Maps Paystack rejections (validation, eligibility, auth, preferred-bank)
+    // and missing-migration Prisma errors to typed codes/statuses; rethrows
+    // unknown errors for the global handler.
+    throw mapProvisionError(err);
   }
 }
 
