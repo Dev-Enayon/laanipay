@@ -27,6 +27,7 @@ export default function Contribution() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(null);
   const [showPlans, setShowPlans] = useState(false);
   const [freq, setFreq] = useState('WEEKLY');
 
@@ -42,6 +43,10 @@ export default function Contribution() {
       .catch((err) => setError(err.message ?? 'Could not load plans'));
 
     loadOverview().catch((err) => setError(err.message ?? 'Could not load subscription'));
+
+    api('/wallet')
+      .then((data) => setWalletBalance(data?.balance ?? null))
+      .catch(() => setWalletBalance(null));
   }, []);
 
   const subscribe = async (planId) => {
@@ -133,6 +138,30 @@ export default function Contribution() {
       });
     } catch (err) {
       setError(err.message ?? 'Could not start payment. Please try again.');
+      setBusy(false);
+    }
+  };
+
+  const payFromWallet = async (subscription) => {
+    const subscriptionId = subscription?.id;
+    if (!subscriptionId) return;
+
+    setError('');
+    setInfo('');
+    setBusy(true);
+    try {
+      const result = await api('/contributions/pay/wallet', { method: 'POST', body: { subscriptionId } });
+      const nextDate = result?.nextPaymentDate ?? null;
+      setInfo(
+        nextDate
+          ? `Paid from wallet. Next contribution is due ${nextDate}.`
+          : 'Paid from wallet successfully.',
+      );
+      setWalletBalance((result?.payment?.amount ?? 0) > 0 ? (walletBalance ?? 0) - (result?.payment?.amount ?? 0) : walletBalance);
+      await loadOverview();
+    } catch (err) {
+      setError(err.message ?? 'Could not pay from wallet');
+    } finally {
       setBusy(false);
     }
   };
@@ -260,6 +289,8 @@ export default function Contribution() {
           overviewUnit={overview}
           busy={busy}
           onPay={payNow}
+          onPayWallet={payFromWallet}
+          walletBalance={walletBalance}
           onShowPlans={() => setShowPlans(true)}
         />
       )}
@@ -267,11 +298,13 @@ export default function Contribution() {
   );
 }
 
-function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onShowPlans }) {
+function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onPayWallet, walletBalance, onShowPlans }) {
   const weekly = subscription.plan?.frequency === 'WEEKLY';
   const cohort = subscription.cohort ?? null;
   const progressPercent = Math.round((subscription.progress ?? 0) * 100);
   const planPot = (subscription.plan?.weeklyAmount ?? 0) * (subscription.plan?.cycleWeeks ?? CYCLE_WEEKS);
+  const dueAmount = subscription.amount ?? subscription.plan?.amount ?? 0;
+  const walletCovers = walletBalance !== null && walletBalance >= dueAmount;
 
   return (
     <div className="mt-8">
@@ -381,8 +414,21 @@ function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onShowPlans
         </div>
 
         <button onClick={() => onPay(subscription)} disabled={busy} className="btn-primary mt-6 w-full sm:w-auto">
-          {busy ? 'Processing...' : `Pay ${naira(subscription.amount ?? subscription.plan?.amount ?? 0)} now`}
+          {busy ? 'Processing...' : `Pay ${naira(dueAmount)} now`}
         </button>
+        <button
+          onClick={() => onPayWallet(subscription)}
+          disabled={busy || !walletCovers}
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-6 py-3 text-sm font-semibold text-emerald-700 transition-all duration-300 hover:border-emerald-400 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+        >
+          Pay from wallet
+        </button>
+        <p className="mt-3 text-xs text-slate-400">
+          Wallet balance: {walletBalance !== null ? naira(walletBalance) : '…'}
+          {walletBalance !== null && !walletCovers && (
+            <span className="font-medium text-amber-600"> — insufficient for {naira(dueAmount)}. Fund your wallet first.</span>
+          )}
+        </p>
         <button
           onClick={onShowPlans}
           className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-600 transition-all duration-300 hover:border-primary hover:text-primary sm:w-auto"

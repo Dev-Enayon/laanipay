@@ -224,6 +224,8 @@ router.get(
       where: { id: req.params.id },
       include: {
         wallet: true,
+        virtualAccounts: { orderBy: { createdAt: 'desc' } },
+        walletDeposits: { orderBy: { createdAt: 'desc' }, take: 50 },
         contributionSubscriptions: {
           orderBy: { createdAt: 'desc' },
           include: { plan: true, payments: { orderBy: { createdAt: 'desc' } } },
@@ -297,6 +299,25 @@ router.get(
         totalContributed: user.wallet?.totalContributed ?? 0,
         totalWithdrawn: withdrawnRows[0]?._sum.amount ?? 0,
       },
+      virtualAccounts: user.virtualAccounts.map((va) => ({
+        id: va.id,
+        accountNumber: va.accountNumber,
+        accountName: va.accountName,
+        bankName: va.bankName,
+        provider: va.provider,
+        status: va.status,
+        createdAt: va.createdAt,
+      })),
+      walletDeposits: user.walletDeposits.map((d) => ({
+        id: d.id,
+        reference: d.reference,
+        amount: d.amount,
+        currency: d.currency,
+        status: d.status,
+        channel: d.channel,
+        paystackPaymentId: d.paystackPaymentId,
+        createdAt: d.createdAt,
+      })),
       transactions: transactions.map((t) => ({
         id: t.id,
         type: t.type,

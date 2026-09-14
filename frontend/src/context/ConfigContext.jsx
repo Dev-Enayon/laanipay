@@ -1,10 +1,18 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 
-const ConfigContext = createContext({ emailVerificationEnabled: true, activationFeeKobo: 150000 });
+const ConfigContext = createContext({
+  emailVerificationEnabled: true,
+  activationFeeKobo: 150000,
+  paystackDvaEnabled: false,
+});
 
 export function ConfigProvider({ children }) {
-  const [config, setConfig] = useState({ emailVerificationEnabled: true, activationFeeKobo: 150000 });
+  const [config, setConfig] = useState({
+    emailVerificationEnabled: true,
+    activationFeeKobo: 150000,
+    paystackDvaEnabled: false,
+  });
 
   useEffect(() => {
     let active = true;
@@ -14,6 +22,8 @@ export function ConfigProvider({ children }) {
         setConfig({
           emailVerificationEnabled: data?.emailVerificationEnabled ?? true,
           activationFeeKobo: data?.activationFeeKobo ?? 150000,
+          paystackDvaEnabled: data?.paystackDvaEnabled ?? false,
+          withdrawalBankTransferEnabled: data?.withdrawalBankTransferEnabled ?? false,
         });
       })
       .catch(() => {

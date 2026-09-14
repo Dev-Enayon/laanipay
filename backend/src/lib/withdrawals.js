@@ -202,6 +202,40 @@ async function releaseHeldFunds({ tx, withdrawal, adminId, notes }) {
 // Admin / provider side
 // ---------------------------------------------------------------------------
 
+// Reuse an existing persisted Paystack transfer recipient for (bankCode,
+// accountNumber); otherwise create one and persist it. Avoids duplicate
+// recipients on the Paystack account and keeps recipient_code traceable.
+// Only callable when canDisburseExternally() is true (the caller gates on it).
+async function getOrCreateRecipient({ userId, name, bankCode, accountNumber }) {
+  const existing = await prisma.paystackTransferRecipient.findFirst({
+    where: { bankCode, accountNumber },
+  });
+  if (existing) return existing;
+
+  const created = await createTransferRecipient({ name, bankCode, accountNumber });
+
+  try {
+    return await prisma.paystackTransferRecipient.create({
+      data: {
+        userId,
+        recipientCode: created?.recipient_code,
+        bankCode,
+        accountNumber,
+        accountName: created?.account_name ?? name,
+        currency: created?.currency ?? 'NGN',
+      },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      const dup = await prisma.paystackTransferRecipient.findUnique({
+        where: { recipientCode: created?.recipient_code },
+      });
+      if (dup) return dup;
+    }
+    throw err;
+  }
+}
+
 // Begin settling a PENDING withdrawal. Marks it PROCESSING (funds stay held).
 // When the external provider is enabled, a Paystack transfer is initiated;
 // the transfer reference becomes the idempotency key stored on the row.
@@ -235,7 +269,8 @@ export async function processWithdrawal({ withdrawalId, adminId }) {
         bankCode: withdrawal.bankCode,
         accountNumber: withdrawal.accountNumber,
       });
-      const recipient = await createTransferRecipient({
+      const recipient = await getOrCreateRecipient({
+        userId: withdrawal.userId,
         name: resolved?.account_name ?? 'LaaniPay Wallet User',
         bankCode: withdrawal.bankCode,
         accountNumber: withdrawal.accountNumber,
@@ -243,7 +278,7 @@ export async function processWithdrawal({ withdrawalId, adminId }) {
       const reference = `laaniwd-${withdrawal.id}`;
       const transfer = await initiateTransfer({
         amountKobo: withdrawal.amountKobo,
-        recipientCode: recipient?.recipient_code,
+        recipientCode: recipient?.recipientCode ?? recipient?.recipient_code,
         reference,
         reason: 'LaaniPay wallet withdrawal',
       });

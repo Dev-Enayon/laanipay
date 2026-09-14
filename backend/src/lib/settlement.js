@@ -119,14 +119,12 @@ export async function settlePayment({ reference, expectedUserId }) {
       return { verified: false, kind: 'contribution', reason: 'Payment not successful' };
     }
 
-    // nextPaymentDate advances by one contribution period: +1 month for
-    // MONTHLY plans, +1 week for WEEKLY plans.
-    const plan = contribution.subscription.plan;
-    const frequency = planFrequency(plan);
-    const nextPaymentDate = addContributionPeriod(contribution.subscription.nextPaymentDate, plan);
-
+    // nextPaymentDate advances by one contribution period (+1 month for MONTHLY
+    // plans, +1 week for WEEKLY plans) inside the shared verified-contribution
+    // recorder below.
     let freshlyVerified = false;
     let verifier = { weekIndex: null, cohortId: null, cohortName: null };
+    let nextPaymentDate = null;
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.contributionPayment.updateMany({
@@ -136,87 +134,21 @@ export async function settlePayment({ reference, expectedUserId }) {
 
       if (claimed.count === 1) {
         freshlyVerified = true;
-
-        // Weekly cycle + AJO cohort attribution only; monthly contributions
-        // have no cohort (cohort.js also guards this defensively).
-        let cohort = null;
-        let weekIndex = null;
-        if (frequency === 'WEEKLY') {
-          const joined = await ensureSubscriptionCohort(tx, contribution.subscription);
-          cohort = joined.cohort;
-          weekIndex = cohort?.status === 'ACTIVE' ? cohort.currentWeek : null;
-        }
-
-        verifier = {
-          weekIndex,
-          cohortId: cohort?.id ?? null,
-          cohortName: cohort?.name ?? null,
-        };
-
-        await tx.contributionPayment.update({
-          where: { id: contribution.id },
-          data: { weekIndex, cohortId: cohort?.id ?? null },
+        const recorded = await recordVerifiedContribution({
+          tx,
+          subscription: contribution.subscription,
+          payment: contribution,
+          reference,
         });
-
-        if (cohort && weekIndex) {
-          const memberRow = await tx.cohortMember.findFirst({
-            where: { cohortId: cohort.id, userId: contribution.subscription.userId },
-          });
-          if (memberRow) {
-            await tx.cohortMember.update({
-              where: { id: memberRow.id },
-              data: {
-                lastPaidWeek: weekIndex,
-                totalPaid: { increment: contribution.amount },
-              },
-            });
-          }
-        }
-
-        await tx.contributionSubscription.update({
-          where: { id: contribution.subscriptionId },
-          data: { nextPaymentDate },
-        });
-        const wallet = await tx.wallet.update({
-          where: { userId: contribution.subscription.userId },
-          data: { totalContributed: { increment: contribution.amount } },
-        });
-        await tx.walletTransaction.create({
-          data: {
-            userId: contribution.subscription.userId,
-            type: 'contribution',
-            amount: contribution.amount,
-            balanceAfter: wallet.balance,
-            status: 'completed',
-            reference: contribution.paystackReference,
-            description: `${frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution — ${plan?.name ?? 'Contribution plan'}`,
-            metadata: {
-              planId: contribution.subscription.planId,
-              frequency,
-              weekIndex,
-              cohortId: cohort?.id ?? null,
-            },
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: contribution.subscription.userId,
-            action: 'CONTRIBUTION_PAYMENT_VERIFIED',
-            metadata: {
-              reference,
-              amount: contribution.amount,
-              frequency,
-              weekIndex,
-              cohortId: cohort?.id ?? null,
-            },
-          },
-        });
+        verifier = recorded.verifier;
+        nextPaymentDate = recorded.nextPaymentDate;
       }
     });
 
     if (freshlyVerified) {
+      const plan = contribution.subscription.plan;
       const user = await prisma.user.findUnique({ where: { id: contribution.subscription.userId } });
-      if (user) {
+      if (user && nextPaymentDate) {
         sendContributionReceiptEmail({
           to: user.email,
           name: user.fullName,
@@ -232,4 +164,94 @@ export async function settlePayment({ reference, expectedUserId }) {
   }
 
   throw new AppError('Unknown payment reference', 404);
+}
+
+// Records everything that a newly VERIFIED contribution payment entails. Called
+// inside the caller's transaction, by both:
+//   - settlePayment (Paystack contribution checkout — money came externally),
+//   - POST /contributions/pay/wallet (the contribution was paid from the user's
+//     LaaniPay wallet balance).
+// Because both paths share this function, wallet-paid contributions behave
+// byte-for-byte like Paystack-paid ones: cohort attribution, nextPaymentDate
+// advance, totalContributed, wallet ledger, and audit trail.
+//
+// `subscription` must include `plan` and `cohort`; `payment` must be the
+// ContributionPayment row (already `status: 'verified'` with `paidAt` set).
+export async function recordVerifiedContribution({ tx, subscription, payment, reference }) {
+  const frequency = planFrequency(subscription.plan);
+  const nextPaymentDate = addContributionPeriod(subscription.nextPaymentDate, subscription.plan);
+
+  // Weekly cycle + AJO cohort attribution only; monthly contributions have no
+  // cohort (cohort.js also guards this defensively).
+  let cohort = null;
+  let weekIndex = null;
+  if (frequency === 'WEEKLY') {
+    const joined = await ensureSubscriptionCohort(tx, subscription);
+    cohort = joined.cohort;
+    weekIndex = cohort?.status === 'ACTIVE' ? cohort.currentWeek : null;
+  }
+
+  await tx.contributionPayment.update({
+    where: { id: payment.id },
+    data: { weekIndex, cohortId: cohort?.id ?? null },
+  });
+
+  if (cohort && weekIndex) {
+    const memberRow = await tx.cohortMember.findFirst({
+      where: { cohortId: cohort.id, userId: subscription.userId },
+    });
+    if (memberRow) {
+      await tx.cohortMember.update({
+        where: { id: memberRow.id },
+        data: {
+          lastPaidWeek: weekIndex,
+          totalPaid: { increment: payment.amount },
+        },
+      });
+    }
+  }
+
+  await tx.contributionSubscription.update({
+    where: { id: subscription.id },
+    data: { nextPaymentDate },
+  });
+  const wallet = await tx.wallet.update({
+    where: { userId: subscription.userId },
+    data: { totalContributed: { increment: payment.amount } },
+  });
+  await tx.walletTransaction.create({
+    data: {
+      userId: subscription.userId,
+      type: 'contribution',
+      amount: payment.amount,
+      balanceAfter: wallet.balance,
+      status: 'completed',
+      reference,
+      description: `${frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution — ${subscription.plan?.name ?? 'Contribution plan'}`,
+      metadata: {
+        planId: subscription.planId,
+        frequency,
+        weekIndex,
+        cohortId: cohort?.id ?? null,
+      },
+    },
+  });
+  await tx.auditLog.create({
+    data: {
+      userId: subscription.userId,
+      action: 'CONTRIBUTION_PAYMENT_VERIFIED',
+      metadata: {
+        reference,
+        amount: payment.amount,
+        frequency,
+        weekIndex,
+        cohortId: cohort?.id ?? null,
+      },
+    },
+  });
+
+  return {
+    verifier: { weekIndex, cohortId: cohort?.id ?? null, cohortName: cohort?.name ?? null },
+    nextPaymentDate,
+  };
 }

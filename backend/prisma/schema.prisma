@@ -31,6 +31,10 @@ model User {
   reactivatedBy            String?   @map("reactivated_by")
   lastActivityAt           DateTime? @map("last_activity_at")
   createdAt                DateTime  @default(now()) @map("created_at")
+  // Paystack Customer code used for Dedicated Virtual Account provisioning and
+  // for matching incoming bank-transfer deposits. Unique (nullable) so a
+  // charge.success webhook can be attributed to exactly one user.
+  paystackCustomerCode     String?   @unique @map("paystack_customer_code")
 
   wallet                   Wallet?
   activationPayments       ActivationPayment[]
@@ -52,6 +56,9 @@ model User {
   notifications            Notification[] @relation("DirectUserNotifications")
   sentNotifications        Notification[] @relation("SentNotifications")
   notificationReceipts     NotificationReceipt[]
+  virtualAccounts          VirtualAccount[]
+  walletDeposits           WalletDeposit[]
+  transferRecipients       PaystackTransferRecipient[]
 
   @@index([status])
   @@map("users")
@@ -352,6 +359,54 @@ model WalletTransaction {
   @@map("wallet_transactions")
 }
 
+// A Paystack Dedicated Virtual Account (DVA) provisioned for a user so they
+// can fund their LaaniPay wallet via a plain bank transfer. A user has at most
+// one ACTIVE virtual account; re-provisioning marks older rows INACTIVE.
+// `account_number` is unique so a Paystack NUBAN can never be double-recorded.
+model VirtualAccount {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  // Paystack DVA id from the dedicated_account object (numeric id as string).
+  paystackDvaId String?   @unique @map("paystack_dva_id")
+  customerCode  String    @map("customer_code")
+  accountNumber String?   @unique @map("account_number")
+  accountName   String?   @map("account_name")
+  bankName      String?   @map("bank_name")
+  bankSlug      String?   @map("bank_slug")
+  currency      String    @default("NGN")
+  status        String    @default("ACTIVE") // ACTIVE | INACTIVE | FAILED
+  assignedAt    DateTime? @map("assigned_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deposits  WalletDeposit[]
+
+  @@index([userId, status])
+  @@map("virtual_accounts")
+}
+
+// Idempotency record for wallet funding from a DVA bank transfer. `reference`
+// holds the Paystack transaction reference from charge.success and is UNIQUE,
+// so a replayed or duplicated webhook can never credit the wallet twice.
+model WalletDeposit {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  reference        String    @unique // Paystack transaction reference
+  transactionId    String?   @unique @map("transaction_id") // Paystack numeric tx id
+  customerCode     String?   @map("customer_code")
+  virtualAccountId String?   @map("virtual_account_id")
+  amountKobo       Int       @map("amount_kobo")
+  currency         String    @default("NGN")
+  status           String    @default("verified") // verified | failed
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  user           User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  virtualAccount VirtualAccount? @relation(fields: [virtualAccountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("wallet_deposits")
+}
+
 // Wallet withdrawal requests. Funds are reserved atomically at request time
 // (balance -> heldBalance) so a withdrawal can never drive the available
 // balance negative. External bank transfers (Paystack) are provider-gated:
@@ -390,6 +445,25 @@ model Withdrawal {
   @@index([status])
   @@index([createdAt])
   @@map("withdrawals")
+}
+
+// Persisted Paystack NUBAN transfer recipients. Reusing an existing recipient
+// (instead of creating a fresh one per withdrawal) avoids duplicate recipients
+// on the Paystack account and keeps the recipient_code traceable.
+model PaystackTransferRecipient {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  recipientCode String   @unique @map("recipient_code")
+  bankCode      String   @map("bank_code")
+  accountNumber String   @map("account_number")
+  accountName   String   @map("account_name")
+  currency      String   @default("NGN")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("paystack_transfer_recipients")
 }
 
 // Company ledger — recorded platform expenses and revenue adjustments.

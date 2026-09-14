@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requestWithdrawal } from '../lib/withdrawals.js';
+import { getOrCreateVirtualAccount } from '../lib/dvaFunding.js';
+import { paymentLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
 
@@ -46,6 +48,44 @@ router.get(
       take: Math.min(Math.max(Number(req.query.limit) || 20, 1), 100),
     });
     res.json({ withdrawals });
+  }),
+);
+
+// The user's active Paystack DVA (bank-account funding route), if provisioned.
+router.get(
+  '/virtual-account',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const virtualAccount = await prisma.virtualAccount.findFirst({
+      where: { userId: req.userId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ virtualAccount });
+  }),
+);
+
+// Provision (or return the existing) DVA for the authenticated user.
+router.post(
+  '/virtual-account',
+  requireAuth,
+  paymentLimiter,
+  asyncHandler(async (req, res) => {
+    const virtualAccount = await getOrCreateVirtualAccount(req.user);
+    res.status(201).json({ virtualAccount });
+  }),
+);
+
+// The user's wallet ledger (deposits, contributions, withdrawals, bonuses).
+router.get(
+  '/transactions',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const transactions = await prisma.walletTransaction.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(Number(req.query.limit) || 20, 1), 100),
+    });
+    res.json({ transactions });
   }),
 );
 

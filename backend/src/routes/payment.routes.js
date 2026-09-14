@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { settlePayment } from '../lib/settlement.js';
+import { creditWalletDeposit } from '../lib/dvaFunding.js';
 import { getPlatformConfig } from '../lib/config.js';
 import { applyProviderResult } from '../lib/withdrawals.js';
 import { env } from '../config/env.js';
@@ -128,21 +129,43 @@ router.post(
 
     if (eventName === 'charge.success' && reference && row) {
       if (row.status !== 'PROCESSED') {
+        const mark = (status, message) =>
+          prisma.webhookEvent
+            .update({ where: { id: row.id }, data: { status, message } })
+            .catch(() => {});
+
         try {
           await settlePayment({ reference });
-          await prisma.webhookEvent
-            .update({ where: { id: row.id }, data: { status: 'PROCESSED' } })
-            .catch(() => {});
+          await mark('PROCESSED', null);
         } catch (err) {
-          // Unknown references (or Paystack errors) are logged, not retried
-          // forever by Paystack. The row marks the failure for admin review.
-          await prisma.webhookEvent
-            .update({
-              where: { id: row.id },
-              data: { status: 'FAILED', message: String(err?.message ?? err) },
-            })
-            .catch(() => {});
-          console.error('[webhook] settlement failed:', err?.message ?? err);
+          // settlePayment throws "Unknown payment reference" (404) for
+          // references that are neither a contribution nor activation payment —
+          // exactly the shape of a DVA bank-transfer deposit reference
+          // (Paystack-generated). Fall through to credit the wallet idempotently.
+          const unknownReference =
+            err instanceof AppError &&
+            err.statusCode === 404 &&
+            /unknown payment reference/i.test(err.message);
+
+          if (unknownReference) {
+            try {
+              const deposit = await creditWalletDeposit(reference, event);
+              if (deposit.credited || deposit.alreadyProcessed) {
+                await mark('PROCESSED', null);
+              } else {
+                await mark('FAILED', `Not a resolvable payment or deposit: ${deposit.reason ?? 'unknown'}`);
+                console.warn('[webhook] charge.success not resolvable:', reference, deposit);
+              }
+            } catch (depErr) {
+              await mark('FAILED', String(depErr?.message ?? depErr));
+              console.error('[webhook] DVA deposit handling failed:', depErr?.message ?? depErr);
+            }
+          } else {
+            // Unknown references (or Paystack errors) are logged, not retried
+            // forever by Paystack. The row marks the failure for admin review.
+            await mark('FAILED', String(err?.message ?? err));
+            console.error('[webhook] settlement failed:', err?.message ?? err);
+          }
         }
       }
     } else if (

@@ -37,6 +37,12 @@ export const env = {
   // through the admin-verified payout flow (no faked bank payouts).
   withdrawalBankTransferEnabled:
     (process.env.WITHDRAWAL_BANK_TRANSFER_ENABLED ?? 'false').toLowerCase() === 'true',
+  // Dedicated Virtual Account wallet funding via Paystack. Disabled by default.
+  // When disabled, DVA provisioning returns DVA_DISABLED and the UI surfaces it.
+  paystackDvaEnabled: (process.env.PAYSTACK_DVA_ENABLED ?? 'false').toLowerCase() === 'true',
+  // Preferred bank slug for new Dedicated Virtual Accounts (titan-paystack or
+  // wema-bank live; test-bank for test keys). Configurable via env.
+  paystackDvaPreferredBank: process.env.PAYSTACK_DVA_PREFERRED_BANK ?? 'titan-paystack',
   // Minimum hours that must elapse between two cohort-week advances. Guards
   // against accidental double advancement (cron + manual run, overlapping
   // instances). 0 disables the guard. Parse fail-safe: an unset or INVALID

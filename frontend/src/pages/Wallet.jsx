@@ -7,16 +7,36 @@ import {
   History,
   ArrowRight,
   Landmark,
+  Copy,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira, formatDate } from '../lib/format.js';
 import { frequencyLabel, periodSuffix, planAmount } from '../lib/plans.js';
+import { useConfig } from '../context/ConfigContext.jsx';
 import Reveal from '../components/Reveal.jsx';
 
+const TRANSACTION_LABELS = {
+  DVA_DEPOSIT: 'Bank transfer funding',
+  wallet_contribution: 'Contribution from wallet',
+  contribution: 'Contribution',
+  mlm_bonus: 'Referral bonus',
+  withdrawal_hold: 'Withdrawal reserved',
+  withdrawal_refund: 'Withdrawal returned',
+};
+
 export default function Wallet() {
+  const { paystackDvaEnabled } = useConfig();
   const [wallet, setWallet] = useState(null);
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState('');
+  const [va, setVa] = useState(null);
+  const [vaBusy, setVaBusy] = useState(false);
+  const [vaError, setVaError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [txns, setTxns] = useState([]);
+  const [txnError, setTxnError] = useState('');
 
   useEffect(() => {
     api('/wallet')
@@ -26,7 +46,39 @@ export default function Wallet() {
     api('/contributions/overview')
       .then(setOverview)
       .catch(() => setOverview(null));
+
+    api('/wallet/virtual-account')
+      .then((data) => setVa(data?.virtualAccount ?? null))
+      .catch(() => setVa(null));
+
+    api('/wallet/transactions')
+      .then((data) => setTxns(data?.transactions ?? []))
+      .catch((err) => setTxnError(err.message ?? 'Could not load wallet transactions'));
   }, []);
+
+  const provisionVa = async () => {
+    setVaError('');
+    setVaBusy(true);
+    try {
+      const data = await api('/wallet/virtual-account', { method: 'POST' });
+      setVa(data?.virtualAccount ?? null);
+    } catch (err) {
+      setVaError(err.message ?? 'Could not create your account number');
+    } finally {
+      setVaBusy(false);
+    }
+  };
+
+  const copyNumber = async () => {
+    if (!va?.accountNumber) return;
+    try {
+      await navigator.clipboard.writeText(va.accountNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable — the number is still visible for manual copy.
+    }
+  };
 
   const subscriptions = overview?.subscriptions ?? [];
   const allHistory = subscriptions
@@ -116,6 +168,67 @@ export default function Wallet() {
                   <Link to="/withdraw" className="btn-primary shrink-0 sm:px-10">
                     Request withdrawal <ArrowRight className="h-4 w-4" />
                   </Link>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+
+          <div className="mt-6">
+            <Reveal>
+              <div className="card-light relative overflow-hidden p-6 sm:p-8">
+                <div className="hero-gradient absolute inset-0 opacity-10" />
+                <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Landmark className="h-5 w-5 text-primary" />
+                      <h3 className="text-base font-bold text-slate-900">Fund your wallet by bank transfer</h3>
+                    </div>
+                    <p className="mt-2 max-w-xl text-sm text-slate-500">
+                      Get a dedicated account number, transfer money to it, and your LaaniPay wallet is credited
+                      automatically after Paystack confirms the deposit.
+                    </p>
+
+                    {va ? (
+                      <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">Your account number</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-3">
+                          <p className="font-mono text-2xl font-extrabold tracking-wider text-slate-900">
+                            {va.accountNumber ?? '—'}
+                          </p>
+                          {va.accountNumber && (
+                            <button
+                              onClick={copyNumber}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:border-primary hover:text-primary"
+                            >
+                              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                              {copied ? 'Copied' : 'Copy'}
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-slate-700">{va.accountName ?? ''}</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {[va.bankName, va.bankSlug].filter(Boolean).join(' · ') || 'Paystack virtual account'}
+                        </p>
+                      </div>
+                    ) : (
+                      <button onClick={provisionVa} disabled={vaBusy} className="btn-primary mt-5">
+                        {vaBusy ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" /> Creating account number...
+                          </>
+                        ) : (
+                          'Get my account number'
+                        )}
+                      </button>
+                    )}
+
+                    {vaError && <p className="mt-3 text-sm font-medium text-red-600">{vaError}</p>}
+                    {!paystackDvaEnabled && !va && (
+                      <p className="mt-3 text-xs text-slate-400">
+                        Bank-transfer funding is being rolled out — unavailable at the moment.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </Reveal>
@@ -217,6 +330,53 @@ export default function Wallet() {
                             Pending
                           </span>
                         )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Reveal>
+          </div>
+
+          <div className="mt-6">
+            <Reveal>
+              <div className="card-light p-6">
+                <div className="flex items-center gap-2">
+                  <WalletIcon className="h-5 w-5 text-primary" />
+                  <h3 className="text-base font-bold text-slate-900">Wallet transactions</h3>
+                </div>
+                {txnError ? (
+                  <p className="mt-3 text-sm text-slate-500">{txnError}</p>
+                ) : txns.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">
+                    No wallet transactions yet. Fund your wallet or start contributing to see activity here.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-3">
+                    {txns.slice(0, 10).map((t) => (
+                      <li
+                        key={t.id}
+                        className="flex items-center justify-between rounded-xl border border-slate-100 px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            {TRANSACTION_LABELS[t.type] ?? t.type} ·{' '}
+                            <span className="font-mono text-xs text-slate-400">{t.reference ?? ''}</span>
+                          </p>
+                          <p className="text-xs text-slate-400">{formatDate(t.createdAt)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p
+                            className={`text-sm font-bold ${
+                              t.type === 'DVA_DEPOSIT' || t.type === 'mlm_bonus' || t.type === 'withdrawal_refund'
+                                ? 'text-emerald-600'
+                                : 'text-slate-800'
+                            }`}
+                          >
+                            {naira(t.amount)}
+                          </p>
+                          <p className="text-xs text-slate-400">balance {naira(t.balanceAfter)}</p>
+                        </div>
                       </li>
                     ))}
                   </ul>

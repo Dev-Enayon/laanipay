@@ -4,10 +4,11 @@ import { prisma } from '../lib/prisma.js';
 import { AppError, asyncHandler } from '../middleware/error.js';
 import { requireAuth, requireActivated } from '../middleware/auth.js';
 import { paymentLimiter } from '../middleware/rateLimit.js';
-import { sendContributionSubscribedEmail } from '../lib/mailer.js';
+import { sendContributionSubscribedEmail, sendContributionReceiptEmail } from '../lib/mailer.js';
 import { joinCohort } from '../lib/cohort.js';
 import { getPlatformConfig } from '../lib/config.js';
 import { expectedPayout } from '../lib/rewards.js';
+import { recordVerifiedContribution } from '../lib/settlement.js';
 import {
   CYCLE_WEEKS,
   FREQUENCIES,
@@ -383,6 +384,124 @@ router.post(
       email: req.user.email,
       frequency,
       weekIndex,
+    });
+  }),
+);
+
+// Pay the current contribution period from the user's LaaniPay wallet balance.
+// Mirrors POST /pay (same subscription claim/cancel semantics), but the payment
+// is recorded as verified immediately and the wallet balance is debited in the
+// same atomic transaction. The verified-payment downstream (cohort attribution,
+// nextPaymentDate, totalContributed, ledger, audit, receipt email) is shared
+// with settlePayment via recordVerifiedContribution, so wallet-paid
+// contributions are treated identically to Paystack-paid ones.
+router.post(
+  '/pay/wallet',
+  requireAuth,
+  requireActivated,
+  paymentLimiter,
+  asyncHandler(async (req, res) => {
+    const { subscriptionId } = req.body ?? {};
+
+    if (typeof subscriptionId !== 'string' || !subscriptionId) {
+      throw new AppError('subscriptionId is required', 400);
+    }
+
+    const subscription = await prisma.contributionSubscription.findFirst({
+      where: { id: subscriptionId, userId: req.userId, status: 'active' },
+      include: { plan: true, cohort: true },
+    });
+
+    if (!subscription) {
+      throw new AppError('Active subscription not found', 404);
+    }
+
+    const frequency = planFrequency(subscription.plan);
+    const amount = subscriptionAmount(subscription);
+    const reference = `laani-wal-${randomUUID().replaceAll('-', '')}`;
+
+    const { payment, nextPaymentDate } = await prisma.$transaction(async (tx) => {
+      const wallet = await tx.wallet.findUnique({ where: { userId: req.userId } });
+      if (!wallet) throw new AppError('Wallet not found', 404);
+      if (wallet.balance < amount) {
+        throw new AppError(
+          `Insufficient wallet balance (₦${(wallet.balance / 100).toLocaleString('en-NG')} available)`,
+          400,
+        );
+      }
+
+      await tx.contributionPayment.updateMany({
+        where: { subscriptionId: subscription.id, status: 'pending' },
+        data: { status: 'cancelled' },
+      });
+
+      const payment = await tx.contributionPayment.create({
+        data: {
+          subscriptionId: subscription.id,
+          paystackReference: reference,
+          amount,
+          status: 'verified',
+          paidAt: new Date(),
+        },
+      });
+
+      const recorded = await recordVerifiedContribution({ tx, subscription, payment, reference });
+
+      // Debit the wallet for the contribution and record the ledger entry with
+      // the post-debit balance (rollback-safe: a negative balance throws, which
+      // reverts the whole transaction).
+      const updated = await tx.wallet.update({
+        where: { userId: req.userId },
+        data: { balance: { decrement: amount } },
+      });
+      if (updated.balance < 0) {
+        throw new AppError('Insufficient wallet balance', 400);
+      }
+
+      await tx.walletTransaction.create({
+        data: {
+          userId: req.userId,
+          type: 'wallet_contribution',
+          amount,
+          balanceAfter: updated.balance,
+          status: 'completed',
+          reference,
+          description: `${frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution paid from wallet`,
+          metadata: { subscriptionId: subscription.id, frequency },
+        },
+      });
+
+      return { payment, nextPaymentDate: recorded.nextPaymentDate };
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.userId,
+        action: 'CONTRIBUTION_WALLET_PAYMENT',
+        metadata: { subscriptionId: subscription.id, reference, amount, frequency },
+      },
+    });
+
+    const nextPaymentDateIso = nextPaymentDate.toISOString().split('T')[0];
+    sendContributionReceiptEmail({
+      to: req.user.email,
+      name: req.user.fullName,
+      planName: subscription.plan?.name ?? 'Contribution plan',
+      amount,
+      reference,
+      nextPaymentDate: nextPaymentDateIso,
+    }).catch(() => {});
+
+    res.status(201).json({
+      payment: {
+        id: payment.id,
+        reference: payment.paystackReference,
+        amount: payment.amount,
+        status: payment.status,
+        weekIndex: recorded.verifier.weekIndex,
+        paidAt: payment.paidAt,
+      },
+      nextPaymentDate: nextPaymentDateIso,
     });
   }),
 );

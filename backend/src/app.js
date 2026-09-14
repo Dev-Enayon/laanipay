@@ -62,6 +62,7 @@ export function createApp() {
         monthlySubscriptionFeeKobo: config.monthlySubscriptionFeeKobo,
         serviceChargeEnabled: env.serviceChargeEnabled,
         withdrawalBankTransferEnabled: env.withdrawalBankTransferEnabled,
+        paystackDvaEnabled: env.paystackDvaEnabled,
       });
     }),
   );
