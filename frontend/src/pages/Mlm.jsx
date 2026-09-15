@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Copy, Check, Crown, Users, Network, Wallet, CalendarClock, TrendingUp, Award } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira, formatDate } from '../lib/format.js';
-import GlassCard from '../components/GlassCard.jsx';
 import Reveal from '../components/Reveal.jsx';
 
 const RANK_LADDER = [
@@ -295,18 +294,21 @@ export default function Mlm() {
           </Reveal>
 
           <Reveal>
-            <GlassCard className="mt-6 p-6">
-              <div className="flex items-center gap-2">
-                <CalendarClock className="h-5 w-5 text-neon" />
+            <div className="relative mt-6 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900 to-ink p-6 text-white md:p-8">
+              <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/20 blur-3xl" />
+              <div className="relative flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
+                  <CalendarClock className="h-4 w-4 text-neon" />
+                </span>
                 <h3 className="text-lg font-bold text-white">Monthly Verification Plan</h3>
               </div>
-              <p className="mt-3 text-sm leading-relaxed text-white/60">
+              <p className="relative mt-3 text-sm leading-relaxed text-slate-300">
                 Keep your earning status and rank progression active by maintaining a ₦300 monthly
                 subscription (deducted from your wallet). While your downline stays active each
                 month, their subscription keeps earning you level 1–3 rewards. An active
                 contribution plan (monthly or weekly) keeps your account verified automatically.
               </p>
-            </GlassCard>
+            </div>
           </Reveal>
 
           <Reveal>
