@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck, Bell, ChevronDown, Landmark } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Wallet, Network, PiggyBank, LogOut, Sparkles, ShieldCheck, Bell, ChevronDown, Landmark, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../lib/api.js';
 import { initials } from '../lib/format.js';
@@ -182,6 +182,20 @@ export default function Navbar() {
               )}
             </Link>
           )}
+          {user && (
+            <Link
+              to="/profile"
+              onClick={() => setOpen(false)}
+              className={`inline-flex items-center rounded-xl p-1 transition-colors ${
+                onDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'
+              }`}
+              title="My profile"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-neon text-[11px] font-extrabold uppercase text-white">
+                {initials(user.fullName)}
+              </span>
+            </Link>
+          )}
           <button
             className={`rounded-xl p-2 transition-colors ${onDark ? 'text-white' : 'text-slate-900'}`}
             onClick={() => setOpen((v) => !v)}
@@ -255,6 +269,13 @@ export default function Navbar() {
 
                   <div className="flex flex-col p-2">
                     <Link
+                      to="/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      <User className="h-4 w-4 text-primary" /> My Profile
+                    </Link>
+                    <Link
                       to={user.role === 'admin' ? '/admin' : '/dashboard'}
                       onClick={() => setProfileOpen(false)}
                       className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
@@ -304,6 +325,11 @@ export default function Navbar() {
                   <p className="truncate text-xs text-slate-500">{user.email}</p>
                 </div>
               </div>
+            )}
+            {user && (
+              <Link to="/profile" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <User className="h-4 w-4" /> My Profile
+              </Link>
             )}
             {!user && (
               <Link to="/" onClick={() => setOpen(false)} className="rounded-xl py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">

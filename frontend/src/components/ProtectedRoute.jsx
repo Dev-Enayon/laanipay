@@ -32,6 +32,15 @@ export function ActivateRoute({ children }) {
   return children;
 }
 
+// /profile: requires login, but keeps admins and unactivated users visible.
+export function AuthRoute({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return <FullScreenLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
 // Guest-only pages (/login, /signup): redirect logged-in users away.
 export function GuestRoute({ children }) {
   const { user, loading } = useAuth();

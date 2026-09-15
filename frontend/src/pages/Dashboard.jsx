@@ -8,7 +8,6 @@ import {
   Share2,
   Sparkles,
   Receipt,
-  Bell,
   CalendarClock,
   Copy,
   Check,
@@ -40,7 +39,6 @@ export default function Dashboard() {
   const [sc, setSc] = useState(null);
   const [contrib, setContrib] = useState(null);
   const [mlm, setMlm] = useState(null);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -62,7 +60,6 @@ export default function Dashboard() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const latestCharges = sc?.charges?.slice(0, 5) ?? [];
-  const pendingNotifications = sc?.notifications?.filter((n) => !n.read) ?? [];
 
   const copyCode = async () => {
     try {
@@ -105,68 +102,7 @@ export default function Dashboard() {
             {user?.activationStatus ? 'Account activated' : 'Activation required'}
           </span>
         </div>
-        {sc && (
-          <button
-            onClick={() => setShowNotifications((v) => !v)}
-            className="relative inline-flex shrink-0 items-center rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            aria-label={`Notifications${pendingNotifications.length ? ` (${pendingNotifications.length} unread)` : ''}`}
-            aria-expanded={showNotifications}
-          >
-            <Bell className="h-5 w-5 text-primary" />
-            {pendingNotifications.length > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                {pendingNotifications.length}
-              </span>
-            )}
-          </button>
-        )}
       </header>
-
-      {showNotifications && sc && (
-        <section className="mt-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-900">Notifications</span>
-            <button
-              onClick={() =>
-                api('/service-charges/notifications/read', { method: 'POST' }).then(() =>
-                  setSc((prev) => ({
-                    ...prev,
-                    notifications: (prev?.notifications ?? []).map((n) => ({ ...n, read: true })),
-                  })),
-                )
-              }
-              className="text-xs font-semibold text-primary hover:underline"
-            >
-              Mark all read
-            </button>
-          </div>
-          {sc.notifications.length === 0 ? (
-            <p className="text-sm text-slate-500">No notifications yet.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {sc.notifications.map((n) => (
-                <li
-                  key={n.id}
-                  className={`flex items-start gap-3 rounded-xl px-3 py-2 text-sm ${
-                    n.read ? 'bg-slate-50 text-slate-500' : 'bg-primary/5 text-slate-800'
-                  }`}
-                >
-                  <span
-                    className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                      n.type === 'error' ? 'bg-red-500' : n.type === 'success' ? 'bg-emerald-500' : 'bg-primary'
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <p className="font-semibold">{n.title}</p>
-                    <p className="text-xs text-slate-500">{n.body}</p>
-                    <p className="mt-0.5 text-[11px] text-slate-400">{formatDate(n.createdAt)}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
 
       {/* Primary wallet balance */}
       <section className="relative mt-6 overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 to-ink p-5 text-white sm:p-6">

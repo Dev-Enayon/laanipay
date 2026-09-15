@@ -7,6 +7,7 @@ import {
   GuestRoute,
   ActivateRoute,
   AdminRoute,
+  AuthRoute,
   FullScreenLoader,
 } from './components/ProtectedRoute.jsx';
 import Landing from './pages/Landing.jsx';
@@ -22,6 +23,7 @@ const Withdraw = lazy(() => import('./pages/Withdraw.jsx'));
 const Mlm = lazy(() => import('./pages/Mlm.jsx'));
 const Contribution = lazy(() => import('./pages/Contribution.jsx'));
 const Notifications = lazy(() => import('./pages/Notifications.jsx'));
+const Profile = lazy(() => import('./pages/Profile.jsx'));
 const NotFound = lazy(() => import('./pages/NotFound.jsx'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout.jsx'));
 const AdminOverview = lazy(() => import('./pages/admin/AdminOverview.jsx'));
@@ -113,6 +115,14 @@ export default function App() {
                 <ProtectedRoute>
                   <Notifications />
                 </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <AuthRoute>
+                  <Profile />
+                </AuthRoute>
               }
             />
             <Route
