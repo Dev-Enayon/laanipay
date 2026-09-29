@@ -37,25 +37,40 @@ function getRefreshToken() {
   return localStorage.getItem('laani_refresh');
 }
 
+let refreshPromise = null;
+
+// Single-flight refresh: when several concurrent authenticated requests all
+// hit a 401 (e.g. a page loading multiple resources at once with an expired
+// access token), they share ONE /auth/refresh call instead of each firing its
+// own. Waiters reuse the result, and the token-clearing / logout path runs
+// exactly once on failure.
 async function tryRefresh() {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
 
-  try {
-    const res = await fetch(`${requireApiUrl()}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) throw new Error('refresh failed');
-    const data = await res.json();
-    setTokens(data);
-    return true;
-  } catch {
-    clearTokens();
-    window.dispatchEvent(new CustomEvent('laani:unauthorized'));
-    return false;
-  }
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${requireApiUrl()}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) throw new Error('refresh failed');
+      const data = await res.json();
+      setTokens(data);
+      return true;
+    } catch {
+      clearTokens();
+      window.dispatchEvent(new CustomEvent('laani:unauthorized'));
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function api(path, { method = 'GET', body } = {}) {

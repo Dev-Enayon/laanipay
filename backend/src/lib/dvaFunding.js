@@ -91,15 +91,21 @@ export function mapProvisionError(err) {
       );
     }
 
-    // Client-facing status policy: bad-request/not-found details may be shown
-    // directly; auth/forbidden/service failures are masked server-side (the
-    // code still tells the frontend what happened) and are never returned as
-    // 401/403 so the frontend token-refresh flow is not triggered.
+    // Client-facing status policy:
+    //   - bad-request/not-found details may be surfaced as-is (4xx);
+    //   - auth/forbidden failures are SERVER-side configuration problems (an
+    //     invalid/expired Paystack key or a merchant account not entitled to
+    //     DVAs). They are returned as 500 so operators can tell them apart from
+    //     outages, but never as 401/403, which would trip the frontend
+    //     token-refresh flow;
+    //   - genuine upstream failures (Paystack 5xx / network errors) are 502.
     const status = ['PAYSTACK_BAD_REQUEST', 'PAYSTACK_NOT_FOUND'].includes(code)
       ? err.statusCode >= 400 && err.statusCode < 500
         ? err.statusCode
         : 400
-      : 502;
+      : ['PAYSTACK_AUTH_ERROR', 'PAYSTACK_FORBIDDEN'].includes(code)
+        ? 500
+        : 502;
 
     return new AppError(message, status, code);
   }

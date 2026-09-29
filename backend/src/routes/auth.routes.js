@@ -283,12 +283,12 @@ router.post(
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch {
-      throw new AppError('Invalid or expired refresh token', 401);
+      throw new AppError('Invalid or expired refresh token', 401, 'INVALID_REFRESH_TOKEN');
     }
 
     const user = await prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) {
-      throw new AppError('Invalid or expired refresh token', 401);
+      throw new AppError('Invalid or expired refresh token', 401, 'INVALID_REFRESH_TOKEN');
     }
 
     res.json(issueTokenPair(user.id));

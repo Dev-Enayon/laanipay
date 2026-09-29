@@ -147,17 +147,24 @@ test('mapProvisionError maps upstream HTTP status to codes/statuses conservative
   assert.equal(missing.statusCode, 404);
   assert.equal(missing.code, 'PAYSTACK_NOT_FOUND');
 
-  // Auth/forbidden/service error details are masked and never surface as
-  // client 401/403 (which would trip the frontend refresh flow).
+  // Auth/forbidden failures are server-side configuration problems (an invalid
+  // Paystack key or an account not entitled to DVAs): surfaced as 500, never as
+  // a client 401/403 (which would trip the frontend refresh flow) and never as
+  // 502 (which signals an outage).
   for (const raw of [
     new PaystackError('Authentication failed', 401, 'PAYSTACK_AUTH_ERROR'),
     new PaystackError('Forbidden', 403, 'PAYSTACK_FORBIDDEN'),
-    new PaystackError('Upstream exploded', 500, 'PAYSTACK_SERVICE_ERROR'),
   ]) {
     const appError = mapProvisionError(raw);
-    assert.equal(appError.statusCode, 502);
+    assert.equal(appError.statusCode, 500);
     assert.equal(appError.code, raw.code);
   }
+  // Genuine upstream failures (Paystack 5xx / network errors) stay 502.
+  const upstream = mapProvisionError(
+    new PaystackError('Upstream exploded', 500, 'PAYSTACK_SERVICE_ERROR'),
+  );
+  assert.equal(upstream.statusCode, 502);
+  assert.equal(upstream.code, 'PAYSTACK_SERVICE_ERROR');
 });
 
 test('mapProvisionError rethrows unknown errors for the global handler', () => {
