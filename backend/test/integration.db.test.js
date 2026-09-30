@@ -27,9 +27,10 @@ if (!testUrl) {
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'test-refresh-secret';
   process.env.PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY ?? 'test-paystack-key';
 
-  const [{ prisma }, { requestWithdrawal, cancelWithdrawal, processWithdrawal }] = await Promise.all([
+  const [{ prisma }, { requestWithdrawal, cancelWithdrawal, processWithdrawal }, { bufferBalance }] = await Promise.all([
     import('../src/lib/prisma.js'),
     import('../src/lib/withdrawals.js'),
+    import('../src/lib/bufferFund.js'),
   ]);
 
   // --- helpers ---------------------------------------------------------------
@@ -42,6 +43,12 @@ if (!testUrl) {
     'payouts',
     'cohort_members',
     'cohorts',
+    'buffer_ledger',
+    'contribution_fines',
+    'death_cases',
+    'contribution_defaults',
+    'missed_contributions',
+    'guarantors',
     'mlm_referrals',
     'mlm_ranks',
     'contribution_payments',
@@ -485,6 +492,565 @@ if (!testUrl) {
       assert.equal(res.status, 401, 'missing token is rejected before admin check');
     } finally {
       server.close();
+    }
+  });
+
+  // ===========================================================================
+  // 7. Contribution security buffer (split + idempotent credit)
+  // ===========================================================================
+
+  test('verified weekly contribution splits main/buffer and credits the buffer once', async () => {
+    const { recordVerifiedContribution } = await import('../src/lib/settlement.js');
+    const user = await makeUser({ activationStatus: true, balance: 500000 });
+
+    const wPlan = await prisma.contributionPlan.create({
+      data: { name: 'Weekly Buffer', frequency: 'WEEKLY', weeklyAmount: 500000, cycleWeeks: 52 },
+    });
+    const sub = await prisma.contributionSubscription.create({
+      data: { userId: user.id, planId: wPlan.id, status: 'active', amountKobo: 500000, nextPaymentDate: new Date() },
+    });
+    const cohort = await prisma.cohort.create({
+      data: { name: `BufferCohort ${Date.now()}`, planId: wPlan.id, size: 52, status: 'RECRUITING' },
+    });
+    await prisma.cohortMember.create({
+      data: { cohortId: cohort.id, userId: user.id, position: 1, status: 'ACTIVE' },
+    });
+
+    await prisma.platformSetting.upsert({
+      where: { key: 'bufferPolicy' },
+      update: { value: { enabled: true, mode: 'percent', percent: 2, flatKobo: 0 } },
+      create: { key: 'bufferPolicy', value: { enabled: true, mode: 'percent', percent: 2, flatKobo: 0 } },
+    });
+
+    const payment = await prisma.contributionPayment.create({
+      data: {
+        subscriptionId: sub.id,
+        paystackReference: `buffer-ref-${Date.now()}`,
+        amount: 500000,
+        status: 'pending',
+      },
+    });
+
+    // Mirror POST /contributions/pay/wallet's claim + record in one tx.
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.contributionPayment.updateMany({
+        where: { id: payment.id, status: 'pending' },
+        data: { status: 'verified', paidAt: new Date() },
+      });
+      assert.equal(claimed.count, 1);
+      const fresh = await tx.contributionPayment.findUnique({ where: { id: payment.id } });
+      const freshSub = await tx.contributionSubscription.findUnique({
+        where: { id: sub.id },
+        include: { plan: true, cohort: true },
+      });
+      await recordVerifiedContribution({
+        tx,
+        subscription: freshSub,
+        payment: fresh,
+        reference: fresh.paystackReference,
+      });
+    });
+
+    const recorded = await prisma.contributionPayment.findUnique({ where: { id: payment.id } });
+    assert.equal(recorded.mainAmount, 490000, '₦4,900 funds the main contribution');
+    assert.equal(recorded.bufferAmount, 10000, '₦100 is set aside in the buffer');
+    assert.equal(recorded.mainAmount + recorded.bufferAmount, recorded.amount, 'main + buffer === actual payment');
+
+    const rows = await prisma.bufferLedger.findMany({ where: { userId: user.id } });
+    assert.equal(rows.length, 1, 'buffer credited exactly once');
+    assert.equal(rows[0].eventType, 'BUFFER_CREDIT');
+    assert.equal(rows[0].amountKobo, 10000);
+    assert.equal(rows[0].sign, 1);
+    assert.equal(rows[0].reference, `buffer:${payment.paystackReference}`);
+    assert.equal(bufferBalance(rows), 10000, 'derived balance matches the credit');
+
+    // Duplicate settlement (browser callback + webhook racing) cannot re-credit.
+    const replay = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.contributionPayment.updateMany({
+        where: { id: payment.id, status: 'pending' },
+        data: { status: 'verified', paidAt: new Date() },
+      });
+      return claimed.count;
+    });
+    assert.equal(replay, 0, 'a verified payment can never be claimed twice');
+    assert.equal(await prisma.bufferLedger.count({ where: { userId: user.id } }), 1, 'no second buffer credit');
+  });
+
+  test('disabled buffer policy records 100% main and writes no ledger row', async () => {
+    const { recordVerifiedContribution } = await import('../src/lib/settlement.js');
+    const user = await makeUser({ activationStatus: true, balance: 100000 });
+    const wPlan = await prisma.contributionPlan.create({
+      data: { name: 'Weekly NoBuffer', frequency: 'WEEKLY', weeklyAmount: 100000, cycleWeeks: 52 },
+    });
+    const sub = await prisma.contributionSubscription.create({
+      data: { userId: user.id, planId: wPlan.id, status: 'active', amountKobo: 100000, nextPaymentDate: new Date() },
+    });
+    const cohort = await prisma.cohort.create({
+      data: { name: `NoBuffer ${Date.now()}`, planId: wPlan.id, size: 52, status: 'RECRUITING' },
+    });
+    await prisma.cohortMember.create({ data: { cohortId: cohort.id, userId: user.id, position: 1, status: 'ACTIVE' } });
+    await prisma.platformSetting.upsert({
+      where: { key: 'bufferPolicy' },
+      update: { value: { enabled: false, mode: 'percent', percent: 2, flatKobo: 0 } },
+      create: { key: 'bufferPolicy', value: { enabled: false, mode: 'percent', percent: 2, flatKobo: 0 } },
+    });
+
+    const payment = await prisma.contributionPayment.create({
+      data: { subscriptionId: sub.id, paystackReference: `nobuffer-${Date.now()}`, amount: 100000, status: 'pending' },
+    });
+    await prisma.$transaction(async (tx) => {
+      await tx.contributionPayment.updateMany({
+        where: { id: payment.id, status: 'pending' },
+        data: { status: 'verified', paidAt: new Date() },
+      });
+      const fresh = await tx.contributionPayment.findUnique({ where: { id: payment.id } });
+      const freshSub = await tx.contributionSubscription.findUnique({
+        where: { id: sub.id },
+        include: { plan: true, cohort: true },
+      });
+      await recordVerifiedContribution({ tx, subscription: freshSub, payment: fresh, reference: fresh.paystackReference });
+    });
+
+    const recorded = await prisma.contributionPayment.findUnique({ where: { id: payment.id } });
+    assert.equal(recorded.mainAmount, 100000, 'disabled policy means 100% main');
+    assert.equal(recorded.bufferAmount, 0);
+    assert.equal(await prisma.bufferLedger.count({ where: { userId: user.id } }), 0, 'no ledger row when disabled');
+  });
+
+  // ===========================================================================
+  // 8. Default, grace, buffer protection, catch-up, fine, recovery, death
+  // ===========================================================================
+
+  // Builds a 2-member ACTIVE weekly cohort that has already collected, with a
+  // buffer funded by one verified contribution.
+  async function makeDefaultScenario({ bufferPercent = 20, fineKobo = 0, protectPayouts = false } = {}) {
+    const { setPlatformSetting } = await import('../src/lib/config.js');
+    const { recordVerifiedContribution } = await import('../src/lib/settlement.js');
+    const { contributionBufferSplit } = await import('../src/lib/bufferFund.js');
+
+    await setPlatformSetting('defaultPolicy', { enabled: true, graceDays: 7, closeOnDefault: true });
+    await setPlatformSetting('finePolicy', { enabled: fineKobo > 0, amountKobo: fineKobo, destination: 'unassigned' });
+    await setPlatformSetting('bufferPolicy', {
+      enabled: true,
+      mode: 'percent',
+      percent: bufferPercent,
+      flatKobo: 0,
+      protectPayouts,
+      allowPartialProtection: false,
+      mainPotFallback: false,
+      cycleEndDisposition: 'UNRESOLVED',
+    });
+
+    const payer = await makeUser({ activationStatus: true, balance: 2000000 });
+    const defaulter = await makeUser({ activationStatus: true, balance: 0 });
+
+    const plan = await prisma.contributionPlan.create({
+      data: { name: `Weekly Def ${Date.now()}`, frequency: 'WEEKLY', weeklyAmount: 500000, cycleWeeks: 52 },
+    });
+    const cohort = await prisma.cohort.create({
+      data: { name: `DefCohort ${Date.now()}`, planId: plan.id, size: 2, status: 'ACTIVE', currentWeek: 1 },
+    });
+    const payerMember = await prisma.cohortMember.create({
+      data: { cohortId: cohort.id, userId: payer.id, position: 1, status: 'ACTIVE' },
+    });
+    const defaulterMember = await prisma.cohortMember.create({
+      data: { cohortId: cohort.id, userId: defaulter.id, position: 2, status: 'ACTIVE' },
+    });
+    for (const [user, member] of [[payer, payerMember], [defaulter, defaulterMember]]) {
+      await prisma.contributionSubscription.create({
+        data: { userId: user.id, planId: plan.id, cohortId: cohort.id, status: 'active', amountKobo: 500000, nextPaymentDate: new Date() },
+      });
+      void member;
+    }
+
+    // The payer pays week 1 → a real verified payment → buffer credited.
+    const paySub = await prisma.contributionSubscription.findFirst({ where: { userId: payer.id } });
+    const split = contributionBufferSplit(500000, { enabled: true, mode: 'percent', percent: bufferPercent });
+    const payment = await prisma.contributionPayment.create({
+      data: { subscriptionId: paySub.id, paystackReference: `wk1-${Date.now()}`, amount: 500000, status: 'pending' },
+    });
+    await prisma.$transaction(async (tx) => {
+      await tx.contributionPayment.updateMany({
+        where: { id: payment.id, status: 'pending' },
+        data: { status: 'verified', paidAt: new Date() },
+      });
+      const fresh = await tx.contributionPayment.findUnique({ where: { id: payment.id } });
+      const sub = await tx.contributionSubscription.findUnique({ where: { id: paySub.id }, include: { plan: true, cohort: true } });
+      await recordVerifiedContribution({ tx, subscription: sub, payment: fresh, reference: fresh.paystackReference });
+    });
+
+    return { payer, defaulter, plan, cohort, payerMember, defaulterMember, payment, split, recordVerifiedContribution };
+  }
+
+  test('a missed weekly contribution is recorded once and starts a configurable grace', async () => {
+    const { detectMissedContributions, recordMissedContribution } = await import('../src/lib/defaultRecovery.js');
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario();
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    const first = await detectMissedContributions({ cohortId: cohort.id, weekIndex: 1 });
+    assert.equal(first.detected.length, 1, 'the non-payer is detected');
+    const detected = first.detected[0];
+    assert.equal(detected.amountKobo, 500000);
+
+    const missed = await prisma.missedContribution.findUnique({ where: { id: detected.missedContributionId } });
+    assert.equal(missed.status, 'GRACE', 'grace started immediately');
+    assert.ok(missed.graceEndsAt > new Date(), 'grace deadline is in the future');
+    assert.equal(
+      Math.round((missed.graceEndsAt - missed.dueAt) / (24 * 60 * 60 * 1000)),
+      config.defaultPolicy.graceDays,
+      'grace length comes from config',
+    );
+
+    // Re-running the sweep must not create a second record.
+    const second = await detectMissedContributions({ cohortId: cohort.id, weekIndex: 1 });
+    assert.equal(second.detected.length, 0, 'detection is idempotent');
+    assert.equal(await prisma.missedContribution.count({ where: { memberId: defaulterMember.id } }), 1);
+
+    // The member is in GRACE, not removed, and their participation is intact.
+    const member = await prisma.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+    assert.equal(member.defaultStatus, 'GRACE');
+    assert.equal(member.status, 'ACTIVE', 'the member is NOT removed during grace');
+    void defaulter;
+    void recordMissedContribution;
+  });
+
+  test('buffer protects the payout when sufficient, and refuses when insufficient', async () => {
+    const { protectCohortPayout, openDefaultCase } = await import('../src/lib/defaultRecovery.js');
+    const { bufferBalance, planBufferProtection } = await import('../src/lib/bufferFund.js');
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario({ bufferPercent: 20 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    // Record the miss and open a recovery case to own the advance.
+    const cohortFull = await prisma.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+    const member = await prisma.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+    await prisma.$transaction(async (tx) => {
+      await import('../src/lib/defaultRecovery.js').then((m) =>
+        m.recordMissedContribution({
+          tx,
+          cohort: cohortFull,
+          member,
+          weekIndex: 2,
+          amountKobo: 500000,
+          dueAt: new Date(),
+          config,
+        }),
+      );
+    });
+
+    const before = bufferBalance(
+      await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id } }),
+    );
+    assert.equal(before, 100000, 'buffer holds the payer\'s 20% share');
+
+    // Open a case inside a tx so the ledger write can be transactional.
+    const opened = await prisma.$transaction(async (tx) => {
+      const freshCohort = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const freshMember = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      const res = await openDefaultCase({ tx, cohort: freshCohort, member: freshMember, config });
+      // The buffer is smaller than a full week's protection.
+      const plan = planBufferProtection({
+        availableBufferAmount: before,
+        requiredProtectionAmount: 490000,
+        allowPartialProtection: false,
+      });
+      assert.equal(plan.outcome, 'BUFFER_INSUFFICIENT');
+      const applied = await protectCohortPayout({ tx, cohort: freshCohort, week: 2, plan, config });
+      return { ...res, applied };
+    });
+
+    assert.equal(opened.created, true);
+    assert.equal(opened.defaultCase.outstandingKobo, 500000, 'missed principal is owed');
+    assert.equal(opened.applied.recorded, false, 'NO debit when the buffer cannot cover it');
+
+    // Nothing was debited, the balance is untouched, and the shortfall is
+    // recorded on the case for admin instead of being invented or paid.
+    const after = bufferBalance(await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id } }));
+    assert.equal(after, before, 'buffer balance unchanged — never negative');
+    assert.equal(await prisma.bufferLedger.count({ where: { cohortId: cohort.id, eventType: 'BUFFER_DEBIT' } }), 0);
+    const c = await prisma.contributionDefault.findUnique({ where: { id: opened.defaultCase.id } });
+    assert.equal(c.shortfallKobo, 390000, 'shortfall = required - available, explicitly recorded');
+    void defaulter;
+  });
+
+  test('a sufficient buffer produces exactly one idempotent BUFFER_DEBIT', async () => {
+    const { protectCohortPayout, openDefaultCase } = await import('../src/lib/defaultRecovery.js');
+    const { bufferBalance } = await import('../src/lib/bufferFund.js');
+    // 100% buffer so the pool is large enough to cover the protection.
+    const { cohort, defaulterMember } = await makeDefaultScenario({ bufferPercent: 100 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    const cohortFull = await prisma.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+    const member = await prisma.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+    await prisma.$transaction(async (tx) => {
+      const m = await import('../src/lib/defaultRecovery.js');
+      await m.recordMissedContribution({ tx, cohort: cohortFull, member, weekIndex: 2, amountKobo: 500000, dueAt: new Date(), config });
+      const res = await openDefaultCase({ tx, cohort: cohortFull, member, config });
+      const applied = await protectCohortPayout({
+        tx,
+        cohort: cohortFull,
+        week: 2,
+        plan: { ok: true, outcome: 'PROTECTED', available: 500000, required: 490000, protectedAmount: 490000, shortfall: 0 },
+        config,
+      });
+      assert.equal(applied.recorded, true, 'debit written when the buffer covers it');
+      return res;
+    });
+
+    const debits = await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id, eventType: 'BUFFER_DEBIT' } });
+    assert.equal(debits.length, 1, 'exactly one BUFFER_DEBIT');
+    assert.equal(debits[0].sign, -1);
+    assert.equal(debits[0].amountKobo, 490000);
+    assert.equal(bufferBalance(await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id } })), 10000);
+
+    // Replaying the same protection (same defaultId) must not double-debit.
+    await prisma.$transaction(async (tx) => {
+      await protectCohortPayout({
+        tx,
+        cohort: cohortFull,
+        week: 2,
+        plan: { ok: true, outcome: 'PROTECTED', available: 10000, required: 490000, protectedAmount: 490000, shortfall: 0 },
+        config,
+      });
+    });
+    const debits2 = await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id, eventType: 'BUFFER_DEBIT' } });
+    assert.equal(debits2.length, 1, 'a retry cannot debit the buffer twice');
+  });
+
+  test('grace expiry opens a recovery case, assesses the configured fine, and closes participation without deleting', async () => {
+    const { expireGracePeriods, recordMissedContribution } = await import('../src/lib/defaultRecovery.js');
+    // A fine of ₦2,000 supplied purely through config — never hard-coded.
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario({ fineKobo: 200000 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    // Miss recorded in the past → grace already expired.
+    await prisma.$transaction(async (tx) => {
+      const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      await recordMissedContribution({
+        tx,
+        cohort: cohortFull,
+        member,
+        weekIndex: 2,
+        amountKobo: 500000,
+        dueAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        config,
+      });
+    });
+
+    const results = await expireGracePeriods({ adminId: null });
+    const mine = results.find((r) => r.userId === defaulter.id);
+    assert.ok(mine, 'the expired member was processed');
+    assert.equal(mine.created, true);
+    assert.equal(mine.fineKobo, 200000, 'fine comes from the configured policy');
+    assert.equal(mine.outstandingKobo, 700000, '₦5,000 missed + ₦2,000 fine');
+    assert.equal(mine.participationClosed, true, 'closeOnDefault is honoured');
+
+    // The fine is its own financial event.
+    const fine = await prisma.contributionFine.findFirst({ where: { userId: defaulter.id } });
+    assert.equal(fine.amountKobo, 200000);
+    assert.equal(fine.status, 'ASSESSED');
+    assert.equal(fine.reference, `fine:${mine.defaultId}`);
+
+    // Participation closed — but NOTHING was deleted.
+    const member = await prisma.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+    assert.equal(member.status, 'DEFAULTED');
+    assert.equal(member.defaultStatus, 'RECOVERY');
+    assert.equal(member.position, 2, 'the position is preserved — no mid-cycle replacement');
+    assert.ok(await prisma.user.findUnique({ where: { id: defaulter.id } }), 'the user still exists');
+    assert.ok(member.closedAt, 'closure is timestamped');
+  });
+
+  test('a defaulted member catches up: the payment is split, buffer restored, fine collected', async () => {
+    const { buildCatchUpQuote, applyCatchUpSettlement, openDefaultCase, recordMissedContribution } =
+      await import('../src/lib/defaultRecovery.js');
+    const { bufferBalance } = await import('../src/lib/bufferFund.js');
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario({ fineKobo: 200000 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    // Miss + a buffer advance + a recovery case, all via the real code paths.
+    await prisma.$transaction(async (tx) => {
+      const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      await recordMissedContribution({ tx, cohort: cohortFull, member, weekIndex: 2, amountKobo: 500000, dueAt: new Date(Date.now() - 30 * 864e5), config });
+      const res = await openDefaultCase({ tx, cohort: cohortFull, member, config });
+      // Advance the buffer on this member's behalf.
+      const { recordBufferEntry } = await import('../src/lib/bufferFund.js');
+      await recordBufferEntry({
+        tx,
+        cohortId: cohort.id,
+        userId: defaulter.id,
+        eventType: 'BUFFER_DEBIT',
+        amountKobo: 500000,
+        sign: -1,
+        reference: `buffer-protect:${cohort.id}:${res.defaultCase.id}`,
+        reason: 'test protection',
+      });
+      return res;
+    });
+
+    const afterDebit = bufferBalance(await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id } }));
+    assert.equal(afterDebit, 50000, 'one credit of 100k minus a 50k advance');
+
+    const sub = await prisma.contributionSubscription.findFirst({ where: { userId: defaulter.id } });
+    const missedRows = await prisma.missedContribution.findMany({ where: { memberId: defaulterMember.id, status: 'DEFAULTED' } });
+    const openCase = await prisma.contributionDefault.findFirst({ where: { userId: defaulter.id } });
+
+    // The quote is built from real rows + real config (₦2,000 fine is config).
+    const quote = buildCatchUpQuote({ missedRows, currentAmountKobo: 500000, fineKobo: openCase.fineKobo });
+    assert.deepEqual(quote, { missedKobo: 500000, currentKobo: 500000, fineKobo: 200000, totalKobo: 1200000 });
+
+    const payment = await prisma.contributionPayment.create({
+      data: {
+        subscriptionId: sub.id,
+        paystackReference: `catchup-${Date.now()}`,
+        amount: quote.totalKobo,
+        kind: 'catchup',
+        missedKobo: quote.missedKobo,
+        currentKobo: quote.currentKobo,
+        fineKobo: quote.fineKobo,
+        status: 'pending',
+      },
+    });
+
+    const settled = await prisma.$transaction(async (tx) => {
+      await tx.contributionPayment.updateMany({ where: { id: payment.id, status: 'pending' }, data: { status: 'verified', paidAt: new Date() } });
+      const fresh = await tx.contributionPayment.findUnique({ where: { id: payment.id } });
+      const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      return applyCatchUpSettlement({ tx, cohort: cohortFull, member, payment: fresh, quote, missedRows, config });
+    });
+
+    // Buffer restoration is bounded by what was actually advanced (500k) and
+    // the pool's real balance (50k) → 50k, never more.
+    assert.equal(settled.restored, 50000, 'restoration capped by the pool balance');
+    assert.equal(settled.fineCollected, 200000, 'the fine was collected');
+
+    const restored = bufferBalance(await prisma.bufferLedger.findMany({ where: { cohortId: cohort.id } }));
+    assert.equal(restored, 100000, 'derived balance rose back by exactly the restoration');
+
+    const fine = await prisma.contributionFine.findFirst({ where: { userId: defaulter.id } });
+    assert.equal(fine.status, 'COLLECTED');
+
+    const updatedMiss = await prisma.missedContribution.findFirst({ where: { id: missedRows[0].id } });
+    assert.equal(updatedMiss.status, 'CAUGHT_UP');
+    assert.equal(updatedMiss.caughtUpPaymentId, payment.id);
+
+    const member = await prisma.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+    assert.equal(member.defaultStatus, 'CAUGHT_UP');
+
+    // The full history is preserved.
+    assert.equal(await prisma.contributionPayment.count({ where: { subscriptionId: sub.id } }), 1);
+    assert.equal(await prisma.contributionDefault.count({ where: { userId: defaulter.id } }), 1);
+  });
+
+  test('a catch-up payment that under-pays the quote is rejected, never partially settled', async () => {
+    const { buildCatchUpQuote, applyCatchUpSettlement, openDefaultCase, recordMissedContribution } =
+      await import('../src/lib/defaultRecovery.js');
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario({ fineKobo: 200000 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    await prisma.$transaction(async (tx) => {
+      const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      await recordMissedContribution({ tx, cohort: cohortFull, member, weekIndex: 2, amountKobo: 500000, dueAt: new Date(Date.now() - 30 * 864e5), config });
+      await openDefaultCase({ tx, cohort: cohortFull, member, config });
+    });
+
+    const sub = await prisma.contributionSubscription.findFirst({ where: { userId: defaulter.id } });
+    const missedRows = await prisma.missedContribution.findMany({ where: { memberId: defaulterMember.id, status: 'DEFAULTED' } });
+    const openCase = await prisma.contributionDefault.findFirst({ where: { userId: defaulter.id } });
+    const quote = buildCatchUpQuote({ missedRows, currentAmountKobo: 500000, fineKobo: openCase.fineKobo });
+
+    // The member pays only the current period.
+    const short = await prisma.contributionPayment.create({
+      data: { subscriptionId: sub.id, paystackReference: `short-${Date.now()}`, amount: 500000, kind: 'catchup', status: 'pending' },
+    });
+
+    await assert.rejects(
+      () =>
+        prisma.$transaction(async (tx) => {
+          const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+          const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+          return applyCatchUpSettlement({ tx, cohort: cohortFull, member, payment: short, quote, missedRows, config });
+        }),
+      /does not cover/,
+      'an underpayment is refused',
+    );
+
+    // Nothing was settled: the miss is still defaulted, the fine still assessed.
+    const still = await prisma.missedContribution.findFirst({ where: { id: missedRows[0].id } });
+    assert.equal(still.status, 'DEFAULTED');
+    const fine = await prisma.contributionFine.findFirst({ where: { userId: defaulter.id } });
+    assert.equal(fine.status, 'ASSESSED', 'the fine is not marked paid for money that never arrived');
+  });
+
+  test('a death case progresses through the workflow without charging anyone', async () => {
+    const { reportDeath, verifyDeath, closeDeathParticipation, recordDeathFinancialReview } =
+      await import('../src/lib/defaultRecovery.js');
+    const { defaulter } = await makeDefaultScenario({ fineKobo: 200000 });
+
+    const { deathCase, created } = await reportDeath({ userId: defaulter.id, evidenceReference: 'doc-123' });
+    assert.equal(created, true);
+    assert.equal(deathCase.status, 'DEATH_REPORTED');
+    assert.equal(deathCase.estateDetermination, 'UNRESOLVED', 'the estate treatment is not guessed');
+
+    // Participation cannot be closed before the death is verified: the
+    // VERIFIED_DECEASED -> PARTICIPATION_CLOSED step is genuinely blocked from
+    // DEATH_REPORTED, so no one can bypass verification.
+    await assert.rejects(
+      () => closeDeathParticipation({ deathCaseId: deathCase.id }),
+      /Cannot close participation/,
+    );
+
+    // Verification is the admin-presented-evidence step, so it is allowed
+    // directly from DEATH_REPORTED.
+    const verified = await verifyDeath({ deathCaseId: deathCase.id, evidenceReference: 'doc-123', verificationReference: 'VR-99' });
+    assert.equal(verified.status, 'VERIFIED_DECEASED');
+    assert.equal(verified.verificationReference, 'VR-99');
+
+    const closed = await closeDeathParticipation({ deathCaseId: deathCase.id });
+    assert.equal(closed.status, 'PARTICIPATION_CLOSED');
+
+    const review = await recordDeathFinancialReview({ deathCaseId: deathCase.id });
+    assert.equal(review.status, 'FINANCIAL_REVIEW');
+    assert.equal(review.estateDetermination, 'UNRESOLVED', 'still unresolved without a human decision');
+    assert.equal(review.estateDueKobo, null, 'no estate amount is invented');
+
+    // Nothing was charged to the family or a guarantor.
+    assert.equal(await prisma.contributionFine.count({ where: { userId: defaulter.id } }), 0, 'no fine assessed on death');
+    assert.equal(await prisma.guarantor.count(), 0, 'no guarantor touched');
+    assert.ok(await prisma.user.findUnique({ where: { id: defaulter.id } }), 'the user record is preserved');
+  });
+
+  test('every default and recovery step writes an audit log', async () => {
+    const { recordMissedContribution, openDefaultCase, updateRecoveryCase } = await import('../src/lib/defaultRecovery.js');
+    const { AUDIT_ACTIONS } = await import('../src/lib/defaultRecovery.js');
+    const { cohort, defaulter, defaulterMember } = await makeDefaultScenario({ fineKobo: 200000 });
+    const config = await import('../src/lib/config.js').then((m) => m.getPlatformConfig());
+
+    const opened = await prisma.$transaction(async (tx) => {
+      const cohortFull = await tx.cohort.findUnique({ where: { id: cohort.id }, include: { plan: true } });
+      const member = await tx.cohortMember.findUnique({ where: { id: defaulterMember.id } });
+      await recordMissedContribution({ tx, cohort: cohortFull, member, weekIndex: 2, amountKobo: 500000, dueAt: new Date(Date.now() - 30 * 864e5), config });
+      return openDefaultCase({ tx, cohort: cohortFull, member, config });
+    });
+
+    await updateRecoveryCase({ defaultId: opened.defaultCase.id, status: 'CONTACTING', contactAttempt: true });
+
+    const actions = await prisma.auditLog.findMany({
+      where: { userId: defaulter.id },
+      select: { action: true },
+    });
+    const seen = new Set(actions.map((a) => a.action));
+    for (const required of [
+      AUDIT_ACTIONS.MISSED_PAYMENT,
+      AUDIT_ACTIONS.GRACE_STARTED,
+      AUDIT_ACTIONS.DEFAULT_CREATED,
+      AUDIT_ACTIONS.FINE_APPLIED,
+      AUDIT_ACTIONS.RECOVERY_STARTED,
+      AUDIT_ACTIONS.RECOVERY_UPDATED,
+    ]) {
+      assert.equal(seen.has(required), true, `missing audit action ${required}`);
     }
   });
 

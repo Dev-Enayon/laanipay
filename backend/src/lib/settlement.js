@@ -10,6 +10,13 @@ import {
   sendContributionReceiptEmail,
 } from './mailer.js';
 import { addContributionPeriod, planFrequency } from './contributions.js';
+import { getPlatformConfig } from './config.js';
+import {
+  contributionBufferSplit,
+  recordBufferCredit,
+  shouldCreditBuffer,
+} from './bufferFund.js';
+import { applyCatchUpSettlement } from './defaultRecovery.js';
 
 // Settles a payment reference against Paystack and, on success, records the
 // outcome in the database. Idempotent and safe under concurrent calls
@@ -180,6 +187,30 @@ export async function settlePayment({ reference, expectedUserId }) {
 export async function recordVerifiedContribution({ tx, subscription, payment, reference }) {
   const frequency = planFrequency(subscription.plan);
   const nextPaymentDate = addContributionPeriod(subscription.nextPaymentDate, subscription.plan);
+  const config = await getPlatformConfig();
+  const isWeekly = frequency === 'WEEKLY';
+
+  // A CATCH-UP payment bundles three economically different things:
+  //   missedKobo  — money owed for an already-processed past week
+  //   currentKobo — the normal contribution for the period being settled
+  //   fineKobo    — an assessed default fine (goes to the fine destination)
+  // Only `currentKobo` is a real contribution for THIS period, so only it is
+  // split into main + buffer and only it is attributed to the current week.
+  // Treating the whole catch-up as one period contribution would credit buffer
+  // on the fine and on past-due principal, which would be wrong.
+  const isCatchUp = payment.kind === 'catchup';
+  const currentAmount = isCatchUp
+    ? Math.max(0, Math.round(Number(payment.currentKobo) || 0))
+    : payment.amount;
+  const missedPart = isCatchUp ? Math.max(0, Math.round(Number(payment.missedKobo) || 0)) : 0;
+  const finePart = isCatchUp ? Math.max(0, Math.round(Number(payment.fineKobo) || 0)) : 0;
+
+  // The recorded split must still account for the ENTIRE amount paid. The
+  // missed and fine portions are recorded as such (not as main contribution)
+  // so `mainAmount + bufferAmount + missedAmount + fineAmount === amount`.
+  const split = contributionBufferSplit(currentAmount, config.bufferPolicy);
+  const mainAmount = isWeekly ? split.mainAmount : currentAmount;
+  const bufferAmount = isWeekly ? split.bufferAmount : 0;
 
   // Weekly cycle + AJO cohort attribution only; monthly contributions have no
   // cohort (cohort.js also guards this defensively).
@@ -193,7 +224,7 @@ export async function recordVerifiedContribution({ tx, subscription, payment, re
 
   await tx.contributionPayment.update({
     where: { id: payment.id },
-    data: { weekIndex, cohortId: cohort?.id ?? null },
+    data: { weekIndex, cohortId: cohort?.id ?? null, mainAmount, bufferAmount },
   });
 
   if (cohort && weekIndex) {
@@ -205,9 +236,70 @@ export async function recordVerifiedContribution({ tx, subscription, payment, re
         where: { id: memberRow.id },
         data: {
           lastPaidWeek: weekIndex,
-          totalPaid: { increment: payment.amount },
+          // totalPaid tracks money actually contributed to the group, which
+          // for a catch-up is the current period only.
+          totalPaid: { increment: currentAmount },
         },
       });
+    }
+  }
+
+  // The security-buffer portion is set aside in the group's buffer pool inside
+  // the SAME transaction that verified the payment (idempotent via the unique
+  // reference — a replay can never double-credit). The buffer is protection
+  // money held for the cohort, not spendable wallet balance. This function is
+  // only ever called for a newly-claimed verified payment (the `payment` row
+  // snapshot predates the claim), so the verified gate is structural.
+  if (bufferAmount > 0 && cohort && shouldCreditBuffer({ frequency, status: 'verified' })) {
+    await recordBufferCredit({
+      tx,
+      cohortId: cohort.id,
+      userId: subscription.userId,
+      paymentId: payment.id,
+      amountKobo: bufferAmount,
+      reference,
+      metadata: {
+        planId: subscription.planId,
+        frequency,
+        weekIndex,
+        cohortId: cohort.id,
+        mainAmount,
+        paymentAmount: payment.amount,
+      },
+    });
+  }
+
+  // Catch-up settlement: restore whatever buffer was previously advanced for
+  // this member, resolve the missed rows, collect the fine and move the member
+  // to CAUGHT_UP — all inside this same transaction as the payment claim. It
+  // runs only when there is genuinely something to settle, and it re-verifies
+  // that the money paid covers the quote (it never invents a settlement).
+  let catchUpResult = null;
+  if (isCatchUp && cohort && (missedPart > 0 || finePart > 0)) {
+    const memberRow = await tx.cohortMember.findFirst({
+      where: { cohortId: cohort.id, userId: subscription.userId },
+    });
+    if (memberRow) {
+      const missedRows = await tx.missedContribution.findMany({
+        where: { memberId: memberRow.id, status: { in: ['MISSED', 'GRACE', 'DEFAULTED'] } },
+        orderBy: { weekIndex: 'asc' },
+      });
+      const quote = {
+        missedKobo: missedPart,
+        currentKobo: currentAmount,
+        fineKobo: finePart,
+        totalKobo: missedPart + currentAmount + finePart,
+      };
+      const settled = await applyCatchUpSettlement({
+        tx,
+        cohort,
+        member: memberRow,
+        payment,
+        quote,
+        missedRows,
+        config,
+      });
+      catchUpResult = settled;
     }
   }
 
@@ -222,30 +314,43 @@ export async function recordVerifiedContribution({ tx, subscription, payment, re
   await tx.walletTransaction.create({
     data: {
       userId: subscription.userId,
-      type: 'contribution',
+      type: isCatchUp ? 'contribution_catchup' : 'contribution',
       amount: payment.amount,
       balanceAfter: wallet.balance,
       status: 'completed',
       reference,
-      description: `${frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution — ${subscription.plan?.name ?? 'Contribution plan'}`,
+      description: `${isCatchUp ? 'Catch-up' : frequency === 'WEEKLY' ? 'Weekly' : 'Monthly'} contribution — ${subscription.plan?.name ?? 'Contribution plan'}`,
       metadata: {
         planId: subscription.planId,
         frequency,
         weekIndex,
         cohortId: cohort?.id ?? null,
+        mainAmount,
+        bufferAmount,
       },
     },
   });
   await tx.auditLog.create({
     data: {
       userId: subscription.userId,
-      action: 'CONTRIBUTION_PAYMENT_VERIFIED',
+      action: isCatchUp ? 'CONTRIBUTION_CATCHUP_VERIFIED' : 'CONTRIBUTION_PAYMENT_VERIFIED',
       metadata: {
         reference,
         amount: payment.amount,
         frequency,
         weekIndex,
         cohortId: cohort?.id ?? null,
+        mainAmount,
+        bufferAmount,
+        ...(isCatchUp
+          ? {
+              missedKobo: missedPart,
+              currentKobo: currentAmount,
+              fineKobo: finePart,
+              bufferRestored: catchUpResult?.restored ?? 0,
+              fineCollected: catchUpResult?.fineCollected ?? 0,
+            }
+          : {}),
       },
     },
   });
@@ -253,5 +358,6 @@ export async function recordVerifiedContribution({ tx, subscription, payment, re
   return {
     verifier: { weekIndex, cohortId: cohort?.id ?? null, cohortName: cohort?.name ?? null },
     nextPaymentDate,
+    ...(isCatchUp ? { catchUp: catchUpResult } : {}),
   };
 }

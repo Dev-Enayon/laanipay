@@ -10,6 +10,7 @@ import {
   Layers,
   Timer,
   CalendarDays,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira, formatDate } from '../lib/format.js';
@@ -30,11 +31,23 @@ export default function Contribution() {
   const [walletBalance, setWalletBalance] = useState(null);
   const [showPlans, setShowPlans] = useState(false);
   const [freq, setFreq] = useState('WEEKLY');
+  const [catchUp, setCatchUp] = useState(null);
 
   const loadOverview = async () => {
     const data = await api('/contributions/overview');
     setOverview(data);
     return data;
+  };
+
+  // What a returning member owes after missing contribution(s). Fetched
+  // separately because it only exists while there is something to settle.
+  const loadCatchUp = async (subscriptionId) => {
+    try {
+      const data = await api(`/contributions/catch-up?subscriptionId=${encodeURIComponent(subscriptionId)}`);
+      setCatchUp(data?.catchUpRequired ? data : null);
+    } catch {
+      setCatchUp(null);
+    }
   };
 
   useEffect(() => {
@@ -48,6 +61,12 @@ export default function Contribution() {
       .then((data) => setWalletBalance(data?.balance ?? null))
       .catch(() => setWalletBalance(null));
   }, []);
+
+  useEffect(() => {
+    const weekly = (overview?.items ?? []).find((s) => s.frequency === 'WEEKLY');
+    if (weekly) loadCatchUp(weekly.id);
+    else setCatchUp(null);
+  }, [overview]);
 
   const subscribe = async (planId) => {
     setError('');
@@ -284,16 +303,77 @@ export default function Contribution() {
           )}
         </div>
       ) : (
-        <SubscriptionCard
-          subscription={activeSub}
-          overviewUnit={overview}
-          busy={busy}
-          onPay={payNow}
-          onPayWallet={payFromWallet}
-          walletBalance={walletBalance}
-          onShowPlans={() => setShowPlans(true)}
-        />
+        <>
+          {catchUp && activeSub.frequency === 'WEEKLY' && (
+            <CatchUpNotice data={catchUp} />
+          )}
+          <SubscriptionCard
+            subscription={activeSub}
+            overviewUnit={overview}
+            busy={busy}
+            onPay={payNow}
+            onPayWallet={payFromWallet}
+            walletBalance={walletBalance}
+            onShowPlans={() => setShowPlans(true)}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+// What a returning member owes after missing contribution(s). The breakdown is
+// shown explicitly — missed, current, and any fine — rather than one opaque
+// total, because these settle to different places.
+function CatchUpNotice({ data }) {
+  const { quote, breakdown } = data;
+  const weeks = breakdown?.missed ?? [];
+  const grace = weeks.find((w) => w.status === 'GRACE') ?? weeks[0];
+  return (
+    <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-card">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-bold text-amber-900">You have a missed contribution to settle</h3>
+          <p className="mt-1 text-xs text-amber-800">
+            {weeks.length === 1
+              ? `Week ${weeks[0].weekIndex} was not paid.`
+              : `${weeks.length} weekly contributions were not paid.`}
+            {grace?.graceEndsAt
+              ? ` You are within your grace period — catch up by ${new Date(grace.graceEndsAt).toLocaleDateString('en-NG')}.`
+              : ' Your grace period has ended and a recovery case has been opened.'}
+          </p>
+
+          <dl className="mt-4 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <dt className="text-amber-800">Missed contribution{weeks.length > 1 ? 's' : ''}</dt>
+              <dd className="font-semibold text-amber-900">{naira(quote.missedKobo)}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-amber-800">Current contribution</dt>
+              <dd className="font-semibold text-amber-900">{naira(quote.currentKobo)}</dd>
+            </div>
+            {quote.fineKobo > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-amber-800">Default fine</dt>
+                <dd className="font-semibold text-amber-900">{naira(quote.fineKobo)}</dd>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-amber-200 pt-1.5">
+              <dt className="font-bold text-amber-900">Total to pay</dt>
+              <dd className="font-bold text-amber-900">{naira(quote.totalKobo)}</dd>
+            </div>
+          </dl>
+
+          <p className="mt-3 text-[11px] text-amber-700">
+            Paying now settles the missed and current contributions and collects any fine.{' '}
+            {breakdown?.bufferRestoreEstimate > 0
+              ? `${naira(Math.min(breakdown.bufferRestoreEstimate, quote.missedKobo))} of it restores your group’s security buffer.`
+              : ''}{' '}
+            Use the Pay button below to settle the total.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -400,6 +480,21 @@ function SubscriptionCard({ subscription, overviewUnit, busy, onPay, onPayWallet
               <p className="mt-2 text-2xl font-extrabold text-emerald-600">{naira(subscription.totalContributed ?? 0)}</p>
               <p className="mt-1 text-xs text-slate-500">Sum of all verified monthly contributions.</p>
             </div>
+          </div>
+        )}
+
+        {weekly && (subscription.contributionSplit?.bufferAmount > 0 || (subscription.cohort?.bufferBalance ?? 0) > 0) && (
+          <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              A security buffer protects your group&apos;s cycle.{' '}
+              {subscription.contributionSplit?.bufferAmount > 0
+                ? `Of each ${naira(subscription.amount ?? 0)} contribution, ${naira(subscription.contributionSplit.mainAmount)} funds your main contribution and ${naira(subscription.contributionSplit.bufferAmount)} is set aside in the buffer.`
+                : ''}
+              {(subscription.cohort?.bufferBalance ?? 0) > 0 && (
+                <> Your buffer balance is {naira(subscription.cohort.bufferBalance)}.</>
+              )}
+            </span>
           </div>
         )}
 
@@ -510,7 +605,14 @@ function HistoryBlock({ subscription }) {
                       {weekly ? (payment.weekIndex ? `#${payment.weekIndex}` : '—') : (payment.weekIndex ? `#${payment.weekIndex}` : '—')}
                     </td>
                     <td className="px-5 py-3 font-mono text-xs text-slate-500">{payment.reference}</td>
-                    <td className="px-5 py-3 font-semibold text-slate-800">{naira(payment.amount)}</td>
+                    <td className="px-5 py-3 font-semibold text-slate-800">
+                      {naira(payment.amount)}
+                      {(payment.bufferAmount ?? 0) > 0 && (
+                        <span className="ml-1.5 text-[11px] font-medium text-amber-600">
+                          ({naira(payment.bufferAmount)} buffer)
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       {payment.status === 'verified' ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600">Verified</span>

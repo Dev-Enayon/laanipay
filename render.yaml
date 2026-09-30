@@ -41,3 +41,13 @@ services:
         value: "6"
       - key: WITHDRAWAL_BANK_TRANSFER_ENABLED
         value: false
+      # SAFETY: the application NEVER seeds on boot. `npm start` is the
+      # startCommand above, so seeding used to write reference data to the
+      # production database on every deploy and restart. Seeding is now a
+      # deliberate operator action via `npm run seed` with RUN_SEED=true, and
+      # it additionally requires ALLOW_PRODUCTION_SEED=true when the database is
+      # detected as production. Both stay false in production.
+      - key: RUN_SEED
+        value: "false"
+      - key: ALLOW_PRODUCTION_SEED
+        value: "false"

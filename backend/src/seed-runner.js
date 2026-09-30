@@ -34,6 +34,9 @@ const PLATFORM_SETTINGS = [
   { key: 'cohortSize', value: PLATFORM_DEFAULTS.cohortSize, description: 'AJO cohort size (positions)' },
   { key: 'mlmLevels', value: PLATFORM_DEFAULTS.mlmLevels, description: 'Referral reward depth' },
   { key: 'rewards', value: PLATFORM_DEFAULTS.rewards, description: '3-level referral rewards (kobo, by type)' },
+  { key: 'bufferPolicy', value: PLATFORM_DEFAULTS.bufferPolicy, description: 'Contribution security-buffer policy (enabled, mode, percent, flatKobo)' },
+  { key: 'defaultPolicy', value: PLATFORM_DEFAULTS.defaultPolicy, description: 'Missed-contribution grace/default policy (enabled, graceDays, closeOnDefault)' },
+  { key: 'finePolicy', value: PLATFORM_DEFAULTS.finePolicy, description: 'Default fine policy (enabled, amountKobo in kobo, destination label)' },
 ];
 
 async function ensurePlan(plan) {

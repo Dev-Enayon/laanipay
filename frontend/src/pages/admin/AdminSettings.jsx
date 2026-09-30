@@ -18,6 +18,9 @@ export default function AdminSettings() {
     cohortSize: '',
     mlmLevels: '',
     rewards: { REGISTRATION: { 1: '', 2: '', 3: '' }, MONTHLY_SUBSCRIPTION: { 1: '', 2: '', 3: '' } },
+    bufferPolicy: { enabled: false, mode: 'percent', percent: '', flatKobo: '', protectPayouts: false, allowPartialProtection: false, mainPotFallback: false },
+    defaultPolicy: { enabled: false, graceDays: '', closeOnDefault: false },
+    finePolicy: { enabled: false, amountKobo: '', destination: 'unassigned' },
   });
 
   useEffect(() => {
@@ -41,6 +44,25 @@ export default function AdminSettings() {
               2: String((s.rewards?.MONTHLY_SUBSCRIPTION?.[2] ?? 0) / 100),
               3: String((s.rewards?.MONTHLY_SUBSCRIPTION?.[3] ?? 0) / 100),
             },
+          },
+          bufferPolicy: {
+            enabled: s.bufferPolicy?.enabled === true,
+            mode: s.bufferPolicy?.mode === 'flat' ? 'flat' : 'percent',
+            percent: String(s.bufferPolicy?.percent ?? 0),
+            flatKobo: nairaInput(s.bufferPolicy?.flatKobo ?? 0),
+            protectPayouts: s.bufferPolicy?.protectPayouts === true,
+            allowPartialProtection: s.bufferPolicy?.allowPartialProtection === true,
+            mainPotFallback: s.bufferPolicy?.mainPotFallback === true,
+          },
+          defaultPolicy: {
+            enabled: s.defaultPolicy?.enabled === true,
+            graceDays: String(s.defaultPolicy?.graceDays ?? 7),
+            closeOnDefault: s.defaultPolicy?.closeOnDefault === true,
+          },
+          finePolicy: {
+            enabled: s.finePolicy?.enabled === true,
+            amountKobo: nairaInput(s.finePolicy?.amountKobo ?? 0),
+            destination: s.finePolicy?.destination ?? 'unassigned',
           },
         });
       })
@@ -81,6 +103,25 @@ export default function AdminSettings() {
           cohortSize: Number(form.cohortSize),
           mlmLevels: Number(form.mlmLevels),
           rewards,
+          bufferPolicy: {
+            enabled: form.bufferPolicy.enabled,
+            mode: form.bufferPolicy.mode,
+            percent: Number(form.bufferPolicy.percent),
+            flatKobo: Math.round(Number(form.bufferPolicy.flatKobo) * 100),
+            protectPayouts: form.bufferPolicy.protectPayouts,
+            allowPartialProtection: form.bufferPolicy.allowPartialProtection,
+            mainPotFallback: form.bufferPolicy.mainPotFallback,
+          },
+          defaultPolicy: {
+            enabled: form.defaultPolicy.enabled,
+            graceDays: Number(form.defaultPolicy.graceDays),
+            closeOnDefault: form.defaultPolicy.closeOnDefault,
+          },
+          finePolicy: {
+            enabled: form.finePolicy.enabled,
+            amountKobo: Math.round(Number(form.finePolicy.amountKobo) * 100),
+            destination: form.finePolicy.destination,
+          },
         },
       });
       setSaved(`Saved: ${res.updated.join(', ')}. Settings are used from the next transaction onward.`);
@@ -193,6 +234,230 @@ export default function AdminSettings() {
                 )}
                 . It can never be changed from this panel.
               </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card lg:col-span-2">
+          <h3 className="text-sm font-bold text-slate-900">Contribution security buffer (AJO)</h3>
+          <p className="mt-1 text-xs text-slate-400">
+            A configurable share of each verified weekly contribution is set aside in the group&apos;s buffer pool,
+            tracked per member in an auditable ledger. Disabled by default — the entire contribution funds the main pot.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.bufferPolicy.enabled}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, enabled: e.target.checked } }))
+                }
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="text-sm font-semibold text-slate-800">Enable security buffer on weekly contributions</span>
+            </label>
+
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, mode: 'percent' } }))}
+                className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+                  form.bufferPolicy.mode === 'percent' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Percent of payment
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, mode: 'flat' } }))}
+                className={`rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+                  form.bufferPolicy.mode === 'flat' ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Fixed amount
+              </button>
+            </div>
+
+            {form.bufferPolicy.mode === 'percent' ? (
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Buffer percent (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={form.bufferPolicy.percent}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, percent: e.target.value } }))
+                  }
+                  className={field}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Applied to each weekly contribution. E.g. 2% of a ₦5,000 week sets aside ₦100 in the buffer and funds
+                  ₦4,900 to the main pot. Main + buffer always equal the exact payment.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Fixed buffer amount (₦)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={form.bufferPolicy.flatKobo}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, flatKobo: e.target.value } }))
+                  }
+                  className={field}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  A fixed naira amount diverted from each weekly contribution. Clamped so it can never exceed the contribution itself.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-start gap-2 rounded-xl bg-slate-50 px-4 py-3 text-xs font-medium text-slate-600">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>
+                Buffer money is protection for the group cycle and is never spendable wallet balance.
+              </span>
+            </div>
+
+            <div className="space-y-2.5 border-t border-slate-100 pt-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Payout protection (unresolved policy)</p>
+              {[
+                {
+                  key: 'protectPayouts',
+                  label: 'Advance the buffer to protect a week’s payout from defaulting members',
+                  hint: 'When a member misses, the group pot shrinks. Enabling this advances buffer money to cover the shortfall, net of fees. Off means a miss simply reduces that week’s payout.',
+                },
+                {
+                  key: 'allowPartialProtection',
+                  label: 'Allow partial protection when the buffer cannot cover the full shortfall',
+                  hint: 'Off (recommended) means an insufficient buffer writes no debit at all and records an unresolved shortfall for admin.',
+                },
+                {
+                  key: 'mainPotFallback',
+                  label: 'Allow the main contribution pot to absorb an unresolved shortfall',
+                  hint: 'Off (recommended). Enabling this spends real contributions to cover a default, which has not been approved as a business rule.',
+                },
+              ].map((opt) => (
+                <label key={opt.key} className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={form.bufferPolicy[opt.key]}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, bufferPolicy: { ...f.bufferPolicy, [opt.key]: e.target.checked } }))
+                    }
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="text-sm font-semibold text-slate-800">{opt.label}</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-400">{opt.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card lg:col-span-2">
+          <h3 className="text-sm font-bold text-slate-900">Missed contribution, grace &amp; default</h3>
+          <p className="mt-1 text-xs text-slate-400">
+            When a weekly member misses a scheduled contribution, the miss is recorded, a grace period starts, the member is
+            notified, and a recovery case is opened. The member is never removed during grace. Disabled by default.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.defaultPolicy.enabled}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, defaultPolicy: { ...f.defaultPolicy, enabled: e.target.checked } }))
+                }
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="text-sm font-semibold text-slate-800">Enable missed-contribution tracking</span>
+            </label>
+
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Grace period (days)</label>
+              <input
+                type="number"
+                min="0"
+                max="90"
+                step="1"
+                value={form.defaultPolicy.graceDays}
+                onChange={(e) => setForm((f) => ({ ...f, defaultPolicy: { ...f.defaultPolicy, graceDays: e.target.value } }))}
+                className={field}
+              />
+              <p className="mt-1 text-[11px] text-slate-400">
+                A member who catches up within this window pays missed + current + any fine, and no default is recorded.
+              </p>
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.defaultPolicy.closeOnDefault}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, defaultPolicy: { ...f.defaultPolicy, closeOnDefault: e.target.checked } }))
+                }
+                className="mt-0.5 h-4 w-4 accent-primary"
+              />
+              <span>
+                <span className="text-sm font-semibold text-slate-800">Close participation when grace expires</span>
+                <span className="mt-0.5 block text-[11px] text-slate-400">
+                  Closes the membership only. Nothing is deleted — payments, buffer records, fines, debts and audit logs are
+                  all preserved. No replacement member is inserted mid-cycle.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-card lg:col-span-2">
+          <h3 className="text-sm font-bold text-slate-900">Default fine</h3>
+          <p className="mt-1 text-xs text-slate-400">
+            A fine is recorded as its own financial event against the recovery case. It is only ever charged when enabled,
+            and the amount is configured here — never hard-coded.
+          </p>
+
+          <div className="mt-4 space-y-4">
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={form.finePolicy.enabled}
+                onChange={(e) => setForm((f) => ({ ...f, finePolicy: { ...f.finePolicy, enabled: e.target.checked } }))}
+                className="h-4 w-4 accent-primary"
+              />
+              <span className="text-sm font-semibold text-slate-800">Charge a fine on default</span>
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Fine amount (₦)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={form.finePolicy.amountKobo}
+                  onChange={(e) => setForm((f) => ({ ...f, finePolicy: { ...f.finePolicy, amountKobo: e.target.value } }))}
+                  className={field}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Destination label</label>
+                <input
+                  type="text"
+                  value={form.finePolicy.destination}
+                  onChange={(e) => setForm((f) => ({ ...f, finePolicy: { ...f.finePolicy, destination: e.target.value } }))}
+                  className={field}
+                />
+                <p className="mt-1 text-[11px] text-slate-400">A label only — no automatic transfer is performed.</p>
+              </div>
             </div>
           </div>
         </div>

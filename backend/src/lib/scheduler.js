@@ -81,8 +81,67 @@ export async function runCohortPayoutsOnce() {
   }
 }
 
-export function startCohortScheduler() {
-  const enabled = (process.env.COHORT_PAYOUT_ENABLED ?? 'true').toLowerCase() === 'true';
+// --- Default / grace sweep ---
+// Detects unpaid weeks and expires grace periods. Both operations are
+// idempotent (a week is recorded once, a case is opened once) and both are
+// gated behind `defaultPolicy.enabled`, so with the policy off this is a
+// no-op. It runs BEFORE the payout run so a member's miss is recorded before
+// the week's pot is computed.
+
+let defaultSweepRunning = false;
+
+export async function runDefaultSweepOnce() {
+  if (defaultSweepRunning) {
+    console.warn('[default] sweep already running — skipping concurrent run');
+    return { skipped: 'already_running' };
+  }
+  defaultSweepRunning = true;
+  try {
+    const { getPlatformConfig } = await import('./config.js');
+    const { detectMissedContributions, expireGracePeriods } = await import('./defaultRecovery.js');
+    const { prisma } = await import('./prisma.js');
+
+    const config = await getPlatformConfig();
+    if (config.defaultPolicy?.enabled !== true) {
+      return { skipped: 'default_policy_disabled' };
+    }
+
+    const cohorts = await prisma.cohort.findMany({ where: { status: 'ACTIVE' }, select: { id: true } });
+    const detected = [];
+    for (const c of cohorts) {
+      const res = await detectMissedContributions({ cohortId: c.id });
+      detected.push({ cohortId: c.id, detected: res.detected?.length ?? 0 });
+    }
+
+    const expired = await expireGracePeriods();
+    console.log('[default] sweep complete:', JSON.stringify({ detected, expired: expired.length }));
+    return { detected, expired };
+  } catch (err) {
+    console.error('[default] sweep failed:', err?.message ?? err);
+    return { failed: true, reason: err?.message ?? 'unknown' };
+  } finally {
+    defaultSweepRunning = false;
+  }
+}
+
+export function startDefaultScheduler() {
+  const enabled = (process.env.DEFAULT_SWEEP_ENABLED ?? 'false').toLowerCase() === 'true';
+  if (!enabled) {
+    console.log('[default] sweep scheduler disabled (DEFAULT_SWEEP_ENABLED != true)');
+    return;
+  }
+  const expr = process.env.DEFAULT_SWEEP_CRON ?? '0 5 * * 1'; // Monday 05:00, after payouts
+  if (!cron.validate(expr)) {
+    console.error(`[default] invalid cron expression "${expr}" — scheduler not started`);
+    return;
+  }
+  cron.schedule(expr, () => {
+    runDefaultSweepOnce().catch((err) => console.error('[default] sweep tick failed:', err?.message ?? err));
+  });
+  console.log(`[default] sweep scheduler started with cron "${expr}"`);
+}
+
+export function startCohortScheduler() {  const enabled = (process.env.COHORT_PAYOUT_ENABLED ?? 'true').toLowerCase() === 'true';
   if (!enabled) {
     console.log('[cohort] scheduler disabled (COHORT_PAYOUT_ENABLED != true)');
     return;

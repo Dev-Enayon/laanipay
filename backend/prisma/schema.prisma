@@ -59,6 +59,13 @@ model User {
   virtualAccounts          VirtualAccount[]
   walletDeposits           WalletDeposit[]
   transferRecipients       PaystackTransferRecipient[]
+  bufferLedger             BufferLedger[]
+  missedContributions      MissedContribution[]
+  defaultCases             ContributionDefault[]
+  fines                    ContributionFine[]
+  deathCases               DeathCase[]
+  guaranteedBy             Guarantor[] @relation("GuaranteedUser")
+  guarantees               Guarantor[] @relation("GuarantorUser")
 
   @@index([status])
   @@map("users")
@@ -179,10 +186,260 @@ model ContributionPayment {
   paidAt            DateTime? @map("paid_at")
   createdAt         DateTime  @default(now()) @map("created_at")
 
+  // Security-buffer split of the ACTUAL paid `amount` (NULL for rows created
+  // before the buffer fund existed — treated as 100% main). The accounting
+  // invariant `mainAmount + bufferAmount === amount` is enforced by the
+  // buffer math (lib/bufferFund.js), not by the database.
+  mainAmount   Int?   @map("main_amount")
+  bufferAmount Int?   @map("buffer_amount")
+
   subscription ContributionSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  bufferLedger BufferLedger[]
+  // When this payment is a catch-up, these record how the total was split:
+  // missedKobo (restores advanced buffer first), currentKobo (normal period),
+  // fineKobo (assessed fine). They must sum to `amount` — the catch-up
+  // allocation is verified against the real payment, never invented.
+  missedKobo  Int?     @map("missed_kobo")
+  currentKobo Int?     @map("current_kobo")
+  fineKobo    Int?     @map("fine_kobo")
+  kind        String?  // regular | catchup
+  caughtUpMissed MissedContribution[] @relation("CaughtUpPayment")
 
   @@index([subscriptionId])
   @@map("contribution_payments")
+}
+
+// Security-buffer contribution fund for weekly AJO cohorts. A configurable
+// share of each verified weekly contribution is diverted from the member's
+// main contribution into the group's buffer pool, tracked per (cohort, user).
+// This is the BUFFER FUND FOUNDATION ONLY: crediting on verified payments is
+// wired; default/death/fine/recovery flows that would DEBIT the buffer are
+// deliberately NOT implemented here (see lib/bufferFund.js and the recovery
+// plan). The ledger carries every movement and a balance is derived from it
+// (signed sum) — no stored balance column, so there is no second book that can
+// drift. `amount_kobo` is always positive; `sign` (+1/−1) carries direction.
+model BufferLedger {
+  id         String    @id @default(cuid())
+  cohortId   String    @map("cohort_id")
+  userId     String    @map("user_id")
+  eventType  String    @map("event_type") // BUFFER_CREDIT | BUFFER_DEBIT | BUFFER_REFUND | BUFFER_ADJUSTMENT
+  amountKobo Int       @map("amount_kobo")
+  sign       Int       @default(1) // +1 credits the pool, -1 debits/refunds the pool
+  reference  String    @unique // idempotency key (e.g. "buffer:{paystack reference}")
+  reason     String?
+  actor      String    @default("system") // system | admin:{adminId}
+  paymentId  String?   @map("payment_id")
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  cohort  Cohort                @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payment ContributionPayment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([cohortId, userId])
+  @@index([cohortId, createdAt])
+  @@map("buffer_ledger")
+}
+
+// A scheduled weekly contribution the member did not pay in time. This is the
+// RECORD of the miss — it is created the moment a week is detected unpaid and
+// is never silently deleted. `status` carries the missed-contribution state
+// machine (MISSED → GRACE → CAUGHT_UP | DEFAULTED); a CAUGHT_UP row links the
+// catch-up payment that settled it. The unique (cohortId, memberId, weekIndex)
+// makes detection idempotent — a week can only be recorded as missed once.
+model MissedContribution {
+  id          String    @id @default(cuid())
+  cohortId    String    @map("cohort_id")
+  memberId    String    @map("member_id")
+  userId      String    @map("user_id")
+  weekIndex   Int       @map("week_index")
+  // The contribution amount that went unpaid, in kobo, plus how much of it was
+  // security buffer (informational: a missed payment credits no buffer).
+  amountKobo  Int       @map("amount_kobo")
+  bufferAmountKobo Int   @default(0) @map("buffer_amount_kobo")
+  dueAt       DateTime  @map("due_at")
+  status      String    @default("MISSED") // MISSED | GRACE | CAUGHT_UP | DEFAULTED
+  graceEndsAt DateTime? @map("grace_ends_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  // Idempotency key for the detection sweep: "miss:{cohortId}:{memberId}:{week}".
+  reference   String    @unique
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  cohort          Cohort                @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  member          CohortMember          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  caughtUpPayment ContributionPayment?  @relation("CaughtUpPayment", fields: [caughtUpPaymentId], references: [id], onDelete: SetNull)
+  caughtUpPaymentId String?             @map("caught_up_payment_id")
+  defaultCase     ContributionDefault?
+
+  @@unique([cohortId, memberId, weekIndex])
+  @@index([userId, status])
+  @@index([cohortId, status])
+  @@map("missed_contributions")
+}
+
+// The recovery case opened when a member's grace expires without a catch-up
+// (or when a death case requires financial review). This is the durable record
+// of a default: nothing is ever deleted, only advanced through `status`.
+// Money is tracked in parts and never conflated:
+//   outstandingKobo  = missedKobo + fineKobo (+ any explicitly approved charge)
+//   bufferUsedKobo   = how much of the group's buffer was advanced to protect
+//                      the group's payout obligation on this member's behalf
+//   shortfallKobo    = protection that was REQUIRED but the buffer could not
+//                      cover (BUFFER_INSUFFICIENT) — an UNRESOLVED obligation
+//                      surfaced to admin, never silently written off
+model ContributionDefault {
+  id          String    @id @default(cuid())
+  cohortId    String    @map("cohort_id")
+  memberId    String    @map("member_id")
+  userId      String    @map("user_id")
+  // One open case per (cohort, member) at a time; `reference` is the global
+  // idempotency key for case creation ("default:{cohortId}:{memberId}:{week}").
+  weekIndex   Int?      @map("week_index")
+  reference   String    @unique
+  status      String    @default("OPEN") // OPEN | CONTACTING | PROMISED | PARTIALLY_RECOVERED | RECOVERED | ESCALATED | CLOSED
+  missedKobo  Int       @default(0) @map("missed_kobo")
+  fineKobo    Int       @default(0) @map("fine_kobo")
+  bufferUsedKobo Int    @default(0) @map("buffer_used_kobo")
+  // Required protection vs what the buffer could actually give. Non-zero means
+  // the group absorbed a shortfall that has NOT been resolved by any rule yet.
+  shortfallKobo Int     @default(0) @map("shortfall_kobo")
+  recoveredKobo Int     @default(0) @map("recovered_kobo")
+  outstandingKobo Int    @default(0) @map("outstanding_kobo")
+  contactAttempts Int    @default(0) @map("contact_attempts")
+  lastContactAt DateTime? @map("last_contact_at")
+  promisedAt   DateTime? @map("promised_at")
+  promisedKobo Int?      @map("promised_kobo")
+  guarantorId  String?   @map("guarantor_id")
+  adminNotes   String?   @map("admin_notes")
+  closedAt     DateTime? @map("closed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  cohort   Cohort       @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  member   CohortMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guarantor Guarantor?  @relation(fields: [guarantorId], references: [id], onDelete: SetNull)
+  missed   MissedContribution? @relation(fields: [missedContributionId], references: [id], onDelete: SetNull)
+  missedContributionId String? @unique @map("missed_contribution_id")
+  fines    ContributionFine[]
+  deathCase DeathCase?
+
+  @@index([userId, status])
+  @@index([cohortId, status])
+  @@index([status])
+  @@map("contribution_defaults")
+}
+
+// A default fine is its OWN financial event, never folded silently into a
+// balance. `amountKobo` comes from the configurable fine policy (never
+// hard-coded) and is zero while fines are disabled. `reference` is unique so a
+// retry can never charge the same fine twice. `destination` records where the
+// money goes when collected; it is a LABEL only — no automatic transfer is
+// performed by this layer.
+model ContributionFine {
+  id          String    @id @default(cuid())
+  defaultId   String    @map("default_id")
+  cohortId    String    @map("cohort_id")
+  userId      String    @map("user_id")
+  amountKobo  Int       @map("amount_kobo")
+  reason      String?
+  reference   String    @unique // "fine:{defaultId}" — one fine per case
+  destination String    @default("unassigned") // label only; see ContributionFine
+  status      String    @default("ASSESSED") // ASSESSED | WAIVED | COLLECTED | CANCELLED
+  collectedPaymentId String? @map("collected_payment_id")
+  collectedAt DateTime? @map("collected_at")
+  waivedReason String?  @map("waived_reason")
+  metadata    Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  defaultCase ContributionDefault @relation(fields: [defaultId], references: [id], onDelete: Cascade)
+  cohort      Cohort              @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([cohortId])
+  @@map("contribution_fines")
+}
+
+// Death is a SEPARATE workflow, never a plain default. The state machine is
+// DEATH_REPORTED → DEATH_VERIFICATION → VERIFIED_DECEASED → PARTICIPATION_CLOSED
+// → FINANCIAL_REVIEW → ESTATE_RESOLUTION. This model records the workflow,
+// evidence and the money picture; it NEVER charges the family, NEVER debits a
+// guarantor, and NEVER promises buffer coverage. `estateDetermination` stays
+// 'UNRESOLVED' until a human sets the accounting treatment.
+model DeathCase {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  cohortId    String?   @map("cohort_id")
+  defaultId   String?   @unique @map("default_id")
+  reference   String    @unique
+  status      String    @default("DEATH_REPORTED")
+  reportedBy  String?   @map("reported_by")
+  reportedAt  DateTime  @default(now()) @map("reported_at")
+  verificationReference String? @map("verification_reference")
+  verifiedAt  DateTime? @map("verified_at")
+  // Evidence is a REFERENCE/pointer only (document id or admin-uploaded ref).
+  // No identity documents are stored by this layer.
+  verificationEvidence  String? @map("verification_evidence")
+  participationClosedAt DateTime? @map("participation_closed_at")
+  financialReviewedAt   DateTime? @map("financial_reviewed_at")
+  // The money picture as at review, all in kobo. These are FACTS read from the
+  // ledger, not charges.
+  paidContributionsKobo Int @default(0) @map("paid_contributions_kobo")
+  payoutStatus   String? @map("payout_status")
+  outstandingKobo Int    @default(0) @map("outstanding_kobo")
+  bufferUsedKobo  Int    @default(0) @map("buffer_used_kobo")
+  // Amount determinable as due to/from the estate. NULL = not determined; the
+  // system does not guess and does not auto-charge anyone.
+  estateDueKobo   Int?   @map("estate_due_kobo")
+  // UNRESOLVED | WAIVED | PAYABLE_BY_ESTATE | NOT_DETERMINABLE — set by a human.
+  estateDetermination String @default("UNRESOLVED") @map("estate_determination")
+  adminNotes   String?   @map("admin_notes")
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cohort  Cohort?               @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  defaultCase ContributionDefault? @relation(fields: [defaultId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status])
+  @@map("death_cases")
+}
+
+// A guarantor is a RECORDED REFERENCE for a documented recovery workflow only.
+// It carries no automatic financial liability: nothing in this codebase debits,
+// charges, or holds funds against a guarantor. `liabilityAcknowledged` stays
+// false until a human explicitly records that the guarantor has accepted
+// responsibility in writing.
+model Guarantor {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id") // the member being covered
+  // The guarantor may be another platform user OR an off-platform person
+  // recorded by name/phone only. Off-platform personal data is never exposed
+  // to ordinary users — only admins can read it.
+  linkedUserId String? @map("linked_user_id")
+  fullName    String    @map("full_name")
+  phone       String?
+  relationship String?
+  reference   String?   @map("reference")
+  liabilityAcknowledged Boolean @default(false) @map("liability_acknowledged")
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user       User                  @relation("GuaranteedUser", fields: [userId], references: [id], onDelete: Cascade)
+  linkedUser User?                 @relation("GuarantorUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
+  defaultCases ContributionDefault[]
+
+  @@index([userId])
+  @@map("guarantors")
 }
 
 // Platform configuration — admin-editable key/value store used for financial
@@ -242,6 +499,11 @@ model Cohort {
   members CohortMember[]
   payouts Payout[]
   subscriptions ContributionSubscription[]
+  bufferLedger BufferLedger[]
+  missedContributions MissedContribution[]
+  defaultCases ContributionDefault[]
+  fines ContributionFine[]
+  deathCases DeathCase[]
 
   @@index([planId, status])
   @@map("cohorts")
@@ -252,19 +514,30 @@ model CohortMember {
   cohortId     String    @map("cohort_id")
   userId       String    @map("user_id")
   position     Int
-  status       String    @default("ACTIVE") // ACTIVE | COLLECTED | WAIVED | LEFT
+  status       String    @default("ACTIVE") // ACTIVE | COLLECTED | WAIVED | LEFT | DEFAULTED
+  // The missed-contribution state machine for THIS member in THIS cohort. Kept
+  // as a field on the existing CohortMember row rather than a parallel status
+  // system: ACTIVE → PAYMENT_MISSED → GRACE → CAUGHT_UP | DEFAULTED. `status`
+  // above remains the participation lifecycle; `defaultStatus` is the
+  // delinquency track that decides whether participation is closed.
+  defaultStatus String  @default("ACTIVE") @map("default_status")
   totalPaid    Int       @default(0) @map("total_paid")
   lastPaidWeek Int?      @map("last_paid_week")
   collectedWeek Int?     @map("collected_week")
   joinedAt     DateTime  @default(now()) @map("joined_at")
+  closedAt     DateTime? @map("closed_at")
+  closedReason String?   @map("closed_reason")
 
   cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   payouts Payout[]
+  missedContributions MissedContribution[]
+  defaultCases ContributionDefault[]
 
   @@unique([cohortId, position])
   @@unique([cohortId, userId])
   @@index([userId])
+  @@index([cohortId, defaultStatus])
   @@map("cohort_members")
 }
 
@@ -285,6 +558,13 @@ model Payout {
   status            String    @default("PROCESSING") // PROCESSING | PAID | FAILED | SKIPPED
   provider          String    @default("internal")
   providerReference String?   @map("provider_reference")
+  // Security-buffer protection for this week. `gross_amount`/`net_amount` stay
+  // the REAL collected pot figures; the buffer advance is tracked here and in
+  // the buffer ledger so the pot and the platform fee are never inflated.
+  // `protectionShortfallKobo` > 0 means the buffer could not cover the
+  // obligation (BUFFER_INSUFFICIENT) and the shortfall is UNRESOLVED.
+  protectedFromBufferKobo Int @default(0) @map("protected_from_buffer_kobo")
+  protectionShortfallKobo Int @default(0) @map("protection_shortfall_kobo")
   processedAt       DateTime? @map("processed_at")
   createdAt         DateTime  @default(now()) @map("created_at")
 

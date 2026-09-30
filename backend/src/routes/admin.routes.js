@@ -6,6 +6,17 @@ import { logAudit } from '../lib/audit.js';
 import { computeSummary, computeCharts, computeServiceChargeStats, getServiceChargeTransactions } from '../lib/adminStats.js';
 import { processCohortWeek, runDueCohortPayouts } from '../lib/cohort.js';
 import { getPlatformConfig, setPlatformSetting, platformFeePercent } from '../lib/config.js';
+import { bufferBalance } from '../lib/bufferFund.js';
+import {
+  detectMissedContributions,
+  expireGracePeriods,
+  recordDeathFinancialReview,
+  recordGuarantor,
+  reportDeath,
+  updateRecoveryCase,
+  verifyDeath,
+  closeDeathParticipation,
+} from '../lib/defaultRecovery.js';
 import {
   processWithdrawal,
   confirmWithdrawal,
@@ -777,6 +788,31 @@ router.get(
 
     if (!cohort) throw new AppError('Cohort not found', 404);
 
+    const [bufferRows, config] = await Promise.all([
+      prisma.bufferLedger.findMany({
+        where: { cohortId: cohort.id },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          userId: true,
+          eventType: true,
+          amountKobo: true,
+          sign: true,
+          reference: true,
+          reason: true,
+          actor: true,
+          paymentId: true,
+          createdAt: true,
+        },
+      }),
+      getPlatformConfig(),
+    ]);
+
+    const memberBalances = {};
+    for (const userId of new Set(bufferRows.map((r) => r.userId))) {
+      memberBalances[userId] = bufferBalance(bufferRows.filter((r) => r.userId === userId));
+    }
+
     res.json({
       cohort: {
         id: cohort.id,
@@ -818,6 +854,12 @@ router.get(
           provider: p.provider,
           processedAt: p.processedAt,
         })),
+      },
+      buffer: {
+        policy: config.bufferPolicy,
+        totalBalance: bufferBalance(bufferRows),
+        memberBalances,
+        recent: bufferRows.slice(0, 100),
       },
     });
   }),
@@ -956,6 +998,9 @@ router.get(
         cohortSize: config.cohortSize,
         mlmLevels: config.mlmLevels,
         rewards: config.rewards,
+        bufferPolicy: config.bufferPolicy,
+        defaultPolicy: config.defaultPolicy,
+        finePolicy: config.finePolicy,
         platformFeePercent: config.platformFeePercent,
         envPlatformFeePercent: process.env.WEEKLY_PLATFORM_FEE_PERCENTAGE ?? null,
       },
@@ -1006,10 +1051,80 @@ router.put(
       updates.push('rewards');
     }
 
+    if (body.bufferPolicy !== undefined) {
+      const p = body.bufferPolicy ?? {};
+      const mode = p.mode === 'flat' ? 'flat' : 'percent';
+      const percentRaw = Number(p.percent);
+      const flatRaw = Number(p.flatKobo);
+      if (!Number.isInteger(percentRaw) || percentRaw < 0 || percentRaw > 100) {
+        throw new AppError('bufferPolicy.percent must be an integer between 0 and 100', 400);
+      }
+      if (!Number.isInteger(flatRaw) || flatRaw < 0) {
+        throw new AppError('bufferPolicy.flatKobo must be a non-negative integer (kobo)', 400);
+      }
+      await setPlatformSetting(
+        'bufferPolicy',
+        {
+          enabled: p.enabled === true,
+          mode,
+          percent: percentRaw,
+          flatKobo: flatRaw,
+          // Protection policy. Defaults are OFF; each is an explicit business
+          // decision that must be made deliberately.
+          protectPayouts: p.protectPayouts === true,
+          allowPartialProtection: p.allowPartialProtection === true,
+          mainPotFallback: p.mainPotFallback === true,
+          cycleEndDisposition:
+            typeof p.cycleEndDisposition === 'string' && p.cycleEndDisposition
+              ? p.cycleEndDisposition
+              : 'UNRESOLVED',
+        },
+        'Contribution security-buffer policy (enabled, mode, percent, flatKobo)',
+      );
+      updates.push('bufferPolicy');
+    }
+
+    if (body.defaultPolicy !== undefined) {
+      const p = body.defaultPolicy ?? {};
+      const graceDays = Number(p.graceDays);
+      if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 90) {
+        throw new AppError('defaultPolicy.graceDays must be an integer between 0 and 90', 400);
+      }
+      await setPlatformSetting(
+        'defaultPolicy',
+        {
+          enabled: p.enabled === true,
+          graceDays,
+          closeOnDefault: p.closeOnDefault === true,
+          notifyOnMiss: p.notifyOnMiss !== false,
+          notifyOnGrace: p.notifyOnGrace !== false,
+        },
+        'Missed-contribution grace/default policy (enabled, graceDays, closeOnDefault)',
+      );
+      updates.push('defaultPolicy');
+    }
+
+    if (body.finePolicy !== undefined) {
+      const p = body.finePolicy ?? {};
+      const amountKobo = Number(p.amountKobo);
+      if (!Number.isInteger(amountKobo) || amountKobo < 0) {
+        throw new AppError('finePolicy.amountKobo must be a non-negative integer (kobo)', 400);
+      }
+      await setPlatformSetting(
+        'finePolicy',
+        {
+          enabled: p.enabled === true,
+          amountKobo,
+          destination: typeof p.destination === 'string' && p.destination ? p.destination : 'unassigned',
+        },
+        'Default fine policy (enabled, amountKobo in kobo, destination label)',
+      );
+      updates.push('finePolicy');
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid settings provided' });
     }
-
     await logAudit({
       adminId: req.user.id,
       action: 'ADMIN_SETTINGS_UPDATED',
@@ -1018,6 +1133,265 @@ router.put(
 
     const config = await getPlatformConfig();
     res.json({ updated: updates, settings: config, platformFeePercent: platformFeePercent() });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Default / grace / recovery cases
+// ---------------------------------------------------------------------------
+
+// Detect unpaid weeks for a cohort. Idempotent: a week already recorded as
+// missed is not recorded again.
+router.post(
+  '/cohorts/:id/detect-misses',
+  asyncHandler(async (req, res) => {
+    const { detected } = await detectMissedContributions({ cohortId: req.params.id });
+    await logAudit({
+      adminId: req.user.id,
+      action: 'ADMIN_DETECT_MISSES',
+      targetUserId: null,
+      metadata: { cohortId: req.params.id, detected: detected.length },
+    });
+    res.json({ detected });
+  }),
+);
+
+// Expire grace for members whose deadline has passed: opens the recovery case,
+// assesses any configured fine, and closes participation only when the policy
+// allows. Nothing is ever deleted.
+router.post(
+  '/expire-grace',
+  asyncHandler(async (req, res) => {
+    const results = await expireGracePeriods({ cohortId: req.body?.cohortId ?? null, adminId: req.user.id });
+    res.json({ processed: results });
+  }),
+);
+
+// The unresolved-shortfall queue: recovery cases carrying a buffer shortfall
+// that the pool could not cover. Surfaced so a human decides what happens next;
+// the system has deliberately not invented a fallback.
+router.get(
+  '/shortfalls',
+  asyncHandler(async (req, res) => {
+    const cases = await prisma.contributionDefault.findMany({
+      where: { shortfallKobo: { gt: 0 }, status: { not: 'RECOVERED' } },
+      orderBy: { shortfallKobo: 'desc' },
+      include: {
+        cohort: { select: { id: true, name: true, currentWeek: true } },
+        user: { select: { id: true, fullName: true, email: true } },
+        fines: { select: { id: true, amountKobo: true, status: true } },
+      },
+    });
+    res.json({
+      count: cases.length,
+      totalShortfallKobo: cases.reduce((s, c) => s + c.shortfallKobo, 0),
+      cases: cases.map((c) => ({
+        id: c.id,
+        cohort: c.cohort,
+        member: c.user,
+        status: c.status,
+        missedKobo: c.missedKobo,
+        fineKobo: c.fineKobo,
+        bufferUsedKobo: c.bufferUsedKobo,
+        shortfallKobo: c.shortfallKobo,
+        outstandingKobo: c.outstandingKobo,
+        note: 'Buffer could not cover the protection requirement. No fallback applied — resolution required.',
+      })),
+    });
+  }),
+);
+
+// List recovery cases, filterable by status.
+router.get(
+  '/defaults',
+  asyncHandler(async (req, res) => {
+    const { status } = req.query ?? {};
+    const cases = await prisma.contributionDefault.findMany({
+      where: status ? { status: String(status) } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        cohort: { select: { id: true, name: true, currentWeek: true, status: true } },
+        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        // A guarantor is a recovery reference. Only the minimal, non-sensitive
+        // fields are exposed here; contact details stay admin-only (this route
+        // is admin-gated) and are never returned to the member.
+        guarantor: { select: { id: true, fullName: true, relationship: true, liabilityAcknowledged: true } },
+        fines: { select: { id: true, amountKobo: true, status: true, destination: true, collectedAt: true } },
+        missed: { select: { id: true, weekIndex: true, amountKobo: true, status: true, graceEndsAt: true } },
+      },
+    });
+    res.json({ count: cases.length, cases });
+  }),
+);
+
+// One recovery case in full.
+router.get(
+  '/defaults/:id',
+  asyncHandler(async (req, res) => {
+    const c = await prisma.contributionDefault.findUnique({
+      where: { id: req.params.id },
+      include: {
+        cohort: { select: { id: true, name: true, currentWeek: true, status: true, size: true } },
+        user: { select: { id: true, fullName: true, email: true, phone: true } },
+        guarantor: true,
+        fines: true,
+        missed: true,
+        deathCase: true,
+      },
+    });
+    if (!c) throw new AppError('Recovery case not found', 404);
+    res.json({ case: c });
+  }),
+);
+
+// Update a recovery case: status, notes, contact attempt, promise to pay.
+router.patch(
+  '/defaults/:id',
+  asyncHandler(async (req, res) => {
+    const { status, adminNotes, contactAttempt, promisedKobo } = req.body ?? {};
+    const updated = await updateRecoveryCase({
+      defaultId: req.params.id,
+      status,
+      adminNotes,
+      contactAttempt: contactAttempt === true,
+      promisedKobo: promisedKobo ?? null,
+      adminId: req.user.id,
+    });
+    res.json({ case: updated });
+  }),
+);
+
+// Record a guarantor as a recovery-workflow reference. Creates NO liability
+// and debits nothing: liabilityAcknowledged stays false until a human records
+// that the guarantor accepted responsibility.
+router.post(
+  '/guarantors',
+  asyncHandler(async (req, res) => {
+    const { userId, fullName, phone, relationship, linkedUserId, reference, notes } = req.body ?? {};
+    if (typeof userId !== 'string' || !userId) throw new AppError('userId is required', 400);
+    if (typeof fullName !== 'string' || !fullName.trim()) throw new AppError('fullName is required', 400);
+    const guarantor = await recordGuarantor({
+      userId,
+      fullName: fullName.trim(),
+      phone: phone ?? null,
+      relationship: relationship ?? null,
+      linkedUserId: linkedUserId ?? null,
+      reference: reference ?? null,
+      notes: notes ?? null,
+      adminId: req.user.id,
+    });
+    res.status(201).json({ guarantor });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// Death workflow (admin-driven; never charges anyone automatically)
+// ---------------------------------------------------------------------------
+
+router.get(
+  '/death-cases',
+  asyncHandler(async (req, res) => {
+    const { status } = req.query ?? {};
+    const cases = await prisma.deathCase.findMany({
+      where: status ? { status: String(status) } : {},
+      orderBy: { reportedAt: 'desc' },
+      take: 200,
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
+        cohort: { select: { id: true, name: true, currentWeek: true } },
+      },
+    });
+    res.json({ count: cases.length, cases });
+  }),
+);
+
+router.post(
+  '/death-cases',
+  asyncHandler(async (req, res) => {
+    const { userId, cohortId, reportedBy, evidenceReference } = req.body ?? {};
+    if (typeof userId !== 'string' || !userId) throw new AppError('userId is required', 400);
+    const { deathCase, created } = await reportDeath({
+      userId,
+      cohortId: cohortId ?? null,
+      reportedBy: reportedBy ?? `admin:${req.user.id}`,
+      evidenceReference: evidenceReference ?? null,
+      adminId: req.user.id,
+    });
+    res.status(created ? 201 : 200).json({ deathCase, created });
+  }),
+);
+
+router.post(
+  '/death-cases/:id/verify',
+  asyncHandler(async (req, res) => {
+    const { evidenceReference, verificationReference } = req.body ?? {};
+    const deathCase = await verifyDeath({
+      deathCaseId: req.params.id,
+      evidenceReference: evidenceReference ?? null,
+      verificationReference: verificationReference ?? null,
+      adminId: req.user.id,
+    });
+    res.json({ deathCase });
+  }),
+);
+
+router.post(
+  '/death-cases/:id/close-participation',
+  asyncHandler(async (req, res) => {
+    const deathCase = await closeDeathParticipation({
+      deathCaseId: req.params.id,
+      reason: req.body?.reason ?? 'Death — participation closed',
+      adminId: req.user.id,
+    });
+    res.json({ deathCase });
+  }),
+);
+
+// Records the money picture from real ledger data. The estate determination
+// stays UNRESOLVED unless an admin explicitly sets it — the system does not
+// decide who owes what after a death.
+router.post(
+  '/death-cases/:id/financial-review',
+  asyncHandler(async (req, res) => {
+    const { estateDueKobo, estateDetermination, adminNotes } = req.body ?? {};
+    const deathCase = await recordDeathFinancialReview({
+      deathCaseId: req.params.id,
+      estateDueKobo: estateDueKobo ?? null,
+      estateDetermination: estateDetermination ?? null,
+      adminNotes: adminNotes ?? null,
+      adminId: req.user.id,
+    });
+    res.json({ deathCase });
+  }),
+);
+
+// Cycle-end buffer disposition. There is no approved rule yet, so this only
+// REPORTS the balance and the configured disposition — it transfers nothing.
+router.get(
+  '/buffer/cycle-end-disposition',
+  asyncHandler(async (req, res) => {
+    const config = await getPlatformConfig();
+    const cohorts = await prisma.cohort.findMany({
+      where: { status: 'COMPLETED' },
+      orderBy: { completedAt: 'desc' },
+      take: 50,
+    });
+    const rows = await prisma.cohort.findMany({
+      where: { id: { in: cohorts.map((c) => c.id) } },
+      include: { bufferLedger: { select: { amountKobo: true, sign: true, eventType: true } } },
+    });
+    res.json({
+      disposition: config.bufferPolicy?.cycleEndDisposition ?? 'UNRESOLVED',
+      resolved: (config.bufferPolicy?.cycleEndDisposition ?? 'UNRESOLVED') !== 'UNRESOLVED',
+      note: 'No approved cycle-end rule. Balances are reported only and are transferred nowhere automatically.',
+      cohorts: rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        completedAt: c.completedAt,
+        balanceKobo: bufferBalance(c.bufferLedger),
+      })),
+    });
   }),
 );
 

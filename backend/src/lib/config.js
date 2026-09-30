@@ -24,6 +24,54 @@ export const PLATFORM_DEFAULTS = {
     REGISTRATION: { 1: 20000, 2: 10000, 3: 5000 },
     MONTHLY_SUBSCRIPTION: { 1: 5000, 2: 3000, 3: 2000 },
   },
+  // Contribution security-buffer policy. DISABLED BY DEFAULT — until an admin
+  // enables it, every contribution is 100% main contribution (zero behavior
+  // change). When enabled, each verified WEEKLY contribution is split into
+  // main + buffer (mode 'percent' diverts `percent`% of the paid amount;
+  // mode 'flat' diverts a fixed `flatKobo`). The invariant
+  // mainAmount + bufferAmount === amount is enforced by lib/bufferFund.js.
+  bufferPolicy: {
+    enabled: false,
+    mode: 'percent',
+    percent: 0,
+    flatKobo: 0,
+    // May the buffer fully protect a week's collector payout from a default?
+    // DISABLED by default: without an approved business decision, a miss
+    // simply shrinks that week's pot exactly as it does today. When enabled,
+    // the buffer is advanced for the shortfall and restored on catch-up.
+    protectPayouts: false,
+    // Business policy knobs that are deliberately OFF until approved. When
+    // `allowPartialProtection` is false an insufficient buffer produces
+    // BUFFER_INSUFFICIENT and NO partial debit is written.
+    allowPartialProtection: false,
+    // Whether the main pot may be tapped to cover a shortfall. OFF by default
+    // and, per business rules, must stay off unless explicitly approved.
+    mainPotFallback: false,
+    // Cycle-end buffer disposition has no approved rule yet. The balance stays
+    // auditable and is transferred NOWHERE until this is resolved.
+    cycleEndDisposition: 'UNRESOLVED',
+  },
+  // Missed-contribution / grace / default policy. DISABLED by default: with
+  // this off, nothing is recorded, no default is opened and no member is ever
+  // touched. `graceDays` is a value, not a hard-coded 7.
+  defaultPolicy: {
+    enabled: false,
+    graceDays: 7,
+    // Close participation once grace expires without a catch-up. Off by
+    // default so no existing member is affected until approved.
+    closeOnDefault: false,
+    // Notify the member when a miss is detected and when grace starts.
+    notifyOnMiss: true,
+    notifyOnGrace: true,
+  },
+  // Default fine policy. DISABLED and zero-valued: the proposed ₦2,000 is NOT
+  // production-approved, so it is not hard-coded anywhere. `amountKobo` is
+  // only ever used when `enabled` is true.
+  finePolicy: {
+    enabled: false,
+    amountKobo: 0,
+    destination: 'unassigned', // label only; no automatic transfer is performed
+  },
 };
 
 // The platform fee is env-configurable and read fresh on every payout.
@@ -43,6 +91,29 @@ async function loadStore() {
 // Reads the full effective config, merging DB overrides over defaults.
 // Values are JSON scalars (numbers/objects/arrays). Callers should treat the
 // result as the source of truth for financial rules.
+// Deep-merges a stored policy object over the shipped defaults. A plain
+// assignment would REPLACE the whole object, so any key added in a later
+// release (e.g. protectPayouts on an existing bufferPolicy row) would come back
+// as `undefined` instead of its safe default. Merging means existing rows
+// automatically pick up new keys, and a partially-stored policy can never
+// silently disable a safety default.
+function mergePolicy(defaults, stored) {
+  if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) {
+    return structuredClone(defaults);
+  }
+  if (defaults === null || typeof defaults !== 'object' || Array.isArray(defaults)) {
+    return structuredClone(stored);
+  }
+  const out = structuredClone(defaults);
+  for (const [k, v] of Object.entries(stored)) {
+    if (v !== undefined) out[k] = typeof v === 'object' && v !== null ? mergePolicy(out[k], v) : v;
+  }
+  return out;
+}
+
+// Exported for tests only.
+export const mergePolicyForTest = mergePolicy;
+
 export async function getPlatformConfig() {
   const store = await loadStore();
   const config = structuredClone(PLATFORM_DEFAULTS);
@@ -50,7 +121,7 @@ export async function getPlatformConfig() {
   for (const [key, value] of store.entries()) {
     if (key === 'platformFeePercent') continue; // fee is env-driven, never stored
     if (value !== undefined && value !== null && Object.prototype.hasOwnProperty.call(config, key)) {
-      config[key] = value;
+      config[key] = mergePolicy(config[key], value);
     }
   }
 

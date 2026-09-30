@@ -20,6 +20,8 @@ import { prisma } from './prisma.js';
 import { getPlatformConfig } from './config.js';
 import { weeklyPotSplit } from './rewards.js';
 import { disbursePayout } from './payoutProvider.js';
+import { bufferBalance, planBufferProtection } from './bufferFund.js';
+import { protectCohortPayout, protectionRequirement } from './defaultRecovery.js';
 import { AppError } from '../middleware/error.js';
 import { env } from '../config/env.js';
 
@@ -238,8 +240,63 @@ export async function processCohortWeek({ cohortId, tx: externalTx }) {
     });
     if (existing) return { cohortId, week, alreadyProcessed: true, existing };
 
+    // --- Security-buffer protection (opt-in) ---------------------------------
+    // A member who has not paid shrinks this week's pot, so the collector
+    // receives less than the position promised. When
+    // bufferPolicy.protectPayouts is enabled we compute the real shortfall from
+    // the shortfall between expected and actually-paid members and advance the
+    // buffer to cover it.
+    //
+    // Accounting rules honoured here, without exception:
+    //   * The requirement is derived from REAL verified payments, never assumed.
+    //   * All-or-nothing by default: if the buffer cannot cover the shortfall
+    //     the outcome is BUFFER_INSUFFICIENT, NO debit is written, NO partial
+    //     protection is applied, and the pot is NOT topped up from anywhere
+    //     else. The unresolved shortfall is recorded for admin.
+    //   * The protection is applied to the NET payout only (never gross) so the
+    //     platform fee is not inflated by protected money.
+    //   * No new member is inserted and no payout order is rewritten.
+    let protectedAmount = 0;
+    let protection = null;
+    if (config.bufferPolicy?.protectPayouts === true) {
+      const expectedCount = cohort.members.filter((m) => m.status === 'ACTIVE').length;
+
+      // The gross shortfall (for reporting) and the NET shortfall (the amount
+      // that may actually be protected). Protecting only the net portion keeps
+      // the platform fee exactly what it would have been on the real pot, so
+      // protection can never inflate revenue.
+      const grossShortfall = protectionRequirement({
+        expectedWeeklyAmount: cohort.plan.weeklyAmount,
+        paidCount,
+        expectedCount,
+        feePercent,
+      });
+      const expectedNet = weeklyPotSplit(cohort.plan.weeklyAmount, expectedCount, feePercent).net;
+      const requiredNet = Math.max(0, expectedNet - net);
+
+      const bufferRows = await tx.bufferLedger.findMany({
+        where: { cohortId: cohort.id },
+        select: { amountKobo: true, sign: true, eventType: true },
+      });
+      const plan = planBufferProtection({
+        availableBufferAmount: bufferBalance(bufferRows),
+        requiredProtectionAmount: requiredNet,
+        allowPartialProtection: config.bufferPolicy?.allowPartialProtection === true,
+        mainPotFallback: config.bufferPolicy?.mainPotFallback === true,
+      });
+
+      protection = { ...plan, grossShortfall };
+      if (plan.ok && plan.protectedAmount > 0) {
+        const applied = await protectCohortPayout({ tx, cohort, week, plan, config });
+        protectedAmount = applied.plan?.protectedAmount ?? 0;
+      }
+    }
+
+    // The collector receives the real net plus any buffer protection.
+    const payableNet = net + protectedAmount;
+
     const target = collector ?? cohort.members.find((m) => m.status === 'ACTIVE') ?? null;
-    const payable = net > 0 && !!collector;
+    const payable = payableNet > 0 && !!collector;
 
     let payout = null;
     if (target) {
@@ -250,12 +307,17 @@ export async function processCohortWeek({ cohortId, tx: externalTx }) {
           userId: target.userId,
           planId: cohort.planId,
           weekIndex: week,
+          // gross/net stay the REAL collected pot figures. The buffer advance
+          // is recorded separately in the buffer ledger and never inflates the
+          // pot or the platform fee.
           grossAmount: gross,
           platformFee,
           netAmount: net,
           status: payable ? 'PAID' : 'SKIPPED',
           provider: 'internal',
           processedAt: payable ? new Date() : null,
+          protectedFromBufferKobo: protectedAmount,
+          protectionShortfallKobo: protection?.shortfall ?? 0,
         },
       });
     }
@@ -270,7 +332,10 @@ export async function processCohortWeek({ cohortId, tx: externalTx }) {
         plan: cohort.plan,
         gross,
         platformFee,
-        net,
+        net: payableNet,
+        // Lets the provider split the disbursement into the real pot portion
+        // and the buffer advance for the wallet/ledger/audit trail.
+        protectedFromBuffer: protectedAmount,
       });
       await tx.cohortMember.update({
         where: { id: collector.id },
@@ -305,6 +370,12 @@ export async function processCohortWeek({ cohortId, tx: externalTx }) {
       gross,
       platformFee,
       net,
+      // Buffer protection outcome for this week. `protection.outcome` is
+      // PROTECTED | PARTIALLY_PROTECTED | BUFFER_INSUFFICIENT | NO_SHORTFALL
+      // | null (protection disabled). A BUFFER_INSUFFICIENT week was paid from
+      // the real pot only — the shortfall is recorded, never fabricated.
+      protectedFromBuffer: protectedAmount,
+      protection,
       collectorId: collector?.userId ?? null,
       payoutId: payout?.id ?? null,
       payoutStatus: payout?.status ?? 'SKIPPED',
