@@ -18,6 +18,37 @@ import {
 } from './bufferFund.js';
 import { applyCatchUpSettlement } from './defaultRecovery.js';
 
+// Fail a payment ONLY while it is still `pending`. `verified` and `cancelled`
+// are terminal states and must never be overwritten by a late or duplicate
+// verification result (e.g. a webhook racing the browser callback, or a stale
+// retry). The conditional update is race-safe: if it affects zero rows the
+// row was transitioned elsewhere in the meantime, so we re-read and report the
+// actual status WITHOUT overwriting it. Returns the row's effective status, or
+// null if the row no longer exists.
+export async function failPaymentIfPending(delegate, id) {
+  const { count } = await delegate.updateMany({
+    where: { id, status: 'pending' },
+    data: { status: 'failed' },
+  });
+  if (count === 1) return 'failed';
+  const current = await delegate.findUnique({ where: { id }, select: { status: true } });
+  return current?.status ?? null;
+}
+
+// Classify the outcome of a successful Paystack verification against the row we
+// tried to claim (flip to `verified`) but which was `pending` when we read it.
+// `claimedNow` is true when our conditional updateMany actually flipped the row.
+// When it did NOT, the row was cancelled/failed, deleted, or already verified by
+// a concurrent settlement; `currentStatus` is the re-read status in that case:
+//   'settled'     — this call verified the payment
+//   'already'     — a concurrent settlement verified it first (report success)
+//   'not_pending' — cancelled/failed/absent: a successful Paystack result must
+//                   NOT be reported as a verified local payment
+export function resolveClaimOutcome(claimedNow, currentStatus) {
+  if (claimedNow) return 'settled';
+  return currentStatus === 'verified' ? 'already' : 'not_pending';
+}
+
 // Settles a payment reference against Paystack and, on success, records the
 // outcome in the database. Idempotent and safe under concurrent calls
 // (browser callback + webhook racing) because the status flip only happens
@@ -25,7 +56,11 @@ import { applyCatchUpSettlement } from './defaultRecovery.js';
 //
 // When `expectedUserId` is provided (REST verification), the reference must
 // belong to that user. Webhook calls omit it.
-export async function settlePayment({ reference, expectedUserId }) {
+//
+// `verify` is the Paystack verification call; it defaults to the real
+// `verifyTransaction` and exists only so tests can supply a deterministic
+// result without making a network request.
+export async function settlePayment({ reference, expectedUserId, verify = verifyTransaction }) {
   const activation = await prisma.activationPayment.findUnique({
     where: { paystackReference: reference },
   });
@@ -39,20 +74,22 @@ export async function settlePayment({ reference, expectedUserId }) {
       return { verified: true, kind: 'activation', already: true, bonusesCredited: [] };
     }
 
-    const result = await verifyTransaction(reference);
+    const result = await verify(reference);
     const data = result?.data ?? {};
 
     if (data.status !== 'success' || Number(data.amount) !== activation.amount) {
-      await prisma.activationPayment.update({
-        where: { id: activation.id },
-        data: { status: 'failed' },
-      });
+      const status = await failPaymentIfPending(prisma.activationPayment, activation.id);
+      if (status === 'verified') {
+        // A concurrent settlement won the race; never downgrade it.
+        return { verified: true, kind: 'activation', already: true, bonusesCredited: [] };
+      }
       return { verified: false, kind: 'activation', reason: 'Payment not successful' };
     }
 
     let bonusesCredited = [];
     let rankChanges = [];
     let freshlyActivated = false;
+    let claimOutcome = 'settled';
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.activationPayment.updateMany({
@@ -76,8 +113,24 @@ export async function settlePayment({ reference, expectedUserId }) {
             metadata: { reference, amount: activation.amount },
           },
         });
+      } else {
+        const current = await tx.activationPayment.findUnique({
+          where: { id: activation.id },
+          select: { status: true },
+        });
+        claimOutcome = resolveClaimOutcome(false, current?.status ?? null);
       }
     });
+
+    if (claimOutcome === 'not_pending') {
+      // Paystack reports success but this payment is cancelled/failed locally
+      // (or gone). Report it as not verified and never resurrect it.
+      return { verified: false, kind: 'activation', reason: 'Payment is no longer pending' };
+    }
+    if (claimOutcome === 'already') {
+      // A concurrent settlement verified it first; do not re-run side effects.
+      return { verified: true, kind: 'activation', already: true, bonusesCredited: [] };
+    }
 
     if (freshlyActivated) {
       const user = await prisma.user.findUnique({ where: { id: activation.userId } });
@@ -115,14 +168,15 @@ export async function settlePayment({ reference, expectedUserId }) {
       return { verified: true, kind: 'contribution', already: true };
     }
 
-    const result = await verifyTransaction(reference);
+    const result = await verify(reference);
     const data = result?.data ?? {};
 
     if (data.status !== 'success' || Number(data.amount) !== contribution.amount) {
-      await prisma.contributionPayment.update({
-        where: { id: contribution.id },
-        data: { status: 'failed' },
-      });
+      const status = await failPaymentIfPending(prisma.contributionPayment, contribution.id);
+      if (status === 'verified') {
+        // A concurrent settlement won the race; never downgrade it.
+        return { verified: true, kind: 'contribution', already: true };
+      }
       return { verified: false, kind: 'contribution', reason: 'Payment not successful' };
     }
 
@@ -132,6 +186,7 @@ export async function settlePayment({ reference, expectedUserId }) {
     let freshlyVerified = false;
     let verifier = { weekIndex: null, cohortId: null, cohortName: null };
     let nextPaymentDate = null;
+    let claimOutcome = 'settled';
 
     await prisma.$transaction(async (tx) => {
       const claimed = await tx.contributionPayment.updateMany({
@@ -149,8 +204,24 @@ export async function settlePayment({ reference, expectedUserId }) {
         });
         verifier = recorded.verifier;
         nextPaymentDate = recorded.nextPaymentDate;
+      } else {
+        const current = await tx.contributionPayment.findUnique({
+          where: { id: contribution.id },
+          select: { status: true },
+        });
+        claimOutcome = resolveClaimOutcome(false, current?.status ?? null);
       }
     });
+
+    if (claimOutcome === 'not_pending') {
+      // Paystack reports success but this payment is cancelled/failed locally
+      // (or gone). Report it as not verified and never resurrect it.
+      return { verified: false, kind: 'contribution', reason: 'Payment is no longer pending' };
+    }
+    if (claimOutcome === 'already') {
+      // A concurrent settlement verified it first; do not re-run side effects.
+      return { verified: true, kind: 'contribution', already: true };
+    }
 
     if (freshlyVerified) {
       const plan = contribution.subscription.plan;
