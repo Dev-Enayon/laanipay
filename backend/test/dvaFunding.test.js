@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canProvideDva,
   classifyDeposit,
+  getOrCreateVirtualAccount,
   isIdentificationRequiredError,
   mapProvisionError,
 } from '../src/lib/dvaFunding.js';
@@ -170,4 +172,20 @@ test('mapProvisionError maps upstream HTTP status to codes/statuses conservative
 test('mapProvisionError rethrows unknown errors for the global handler', () => {
   const err = new Error('random transient failure');
   assert.equal(mapProvisionError(err), err);
+});
+
+test('getOrCreateVirtualAccount refuses provisioning when DVA is disabled (403 DVA_DISABLED)', async () => {
+  // The disabled-feature guard runs BEFORE any database or Paystack access.
+  // PAYSTACK_DVA_ENABLED is unset in the test environment, so DVA is off.
+  assert.equal(canProvideDva(), false, 'DVA must be disabled for this test');
+
+  await assert.rejects(
+    () => getOrCreateVirtualAccount({ id: 'user_disabled', email: 'user@example.com', fullName: 'A B' }),
+    (err) => {
+      assert.equal(err.name, 'AppError');
+      assert.equal(err.statusCode, 403);
+      assert.equal(err.code, 'DVA_DISABLED');
+      return true;
+    },
+  );
 });

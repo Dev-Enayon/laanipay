@@ -2,6 +2,8 @@
 // Plans are frequency-aware: MONTHLY plans use monthlyAmount, WEEKLY plans use
 // weeklyAmount + cycleWeeks. The other amount column is unused for that plan.
 
+import { naira } from './format.js';
+
 export const FREQUENCIES = ['MONTHLY', 'WEEKLY'];
 
 export function planFrequency(plan) {
@@ -19,4 +21,14 @@ export function periodSuffix(frequency) {
 
 export function frequencyLabel(frequency) {
   return frequency === 'WEEKLY' ? 'Weekly' : 'Monthly';
+}
+
+// Human-readable caption for the plans behind a total, e.g.
+// "Starter ₦1,000.00/week · Builder ₦2,000.00/month". Pure so it can be
+// unit-tested without a DOM. Falls back to the plan's own amount when the
+// subscription carries no explicit amount.
+export function planCaption(subscriptions) {
+  return (subscriptions ?? [])
+    .map((s) => `${s.plan?.name} ${naira(s.amount ?? planAmount(s.plan))}${periodSuffix(s.plan?.frequency)}`)
+    .join(' · ');
 }

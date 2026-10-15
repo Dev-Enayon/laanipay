@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { naira, formatDate } from '../lib/format.js';
-import { frequencyLabel, periodSuffix, planAmount } from '../lib/plans.js';
+import { frequencyLabel, periodSuffix, planAmount, planCaption } from '../lib/plans.js';
 import { useConfig } from '../context/ConfigContext.jsx';
 import Reveal from '../components/Reveal.jsx';
 
@@ -142,11 +142,7 @@ export default function Wallet() {
                 </p>
                 <p className="relative mt-2 text-xs text-slate-400">
                   From verified contribution payments
-                  {subscriptions.length > 0
-                    ? ` · ${subscriptions
-                        .map((s) => `${s.plan?.name} ${naira(s.amount ?? planAmount(s.plan))}${periodSuffix(s.plan?.frequency)}`)}
-                        .join(' · ')}`
-                    : ''}
+                  {subscriptions.length > 0 ? ` · ${planCaption(subscriptions)}` : ''}
                 </p>
               </div>
             </Reveal>
@@ -231,7 +227,7 @@ export default function Wallet() {
                           {[va.bankName, va.bankSlug].filter(Boolean).join(' · ') || 'Paystack virtual account'}
                         </p>
                       </div>
-                    ) : (
+                    ) : paystackDvaEnabled ? (
                       <button onClick={provisionVa} disabled={vaBusy} className="btn-primary mt-5">
                         {vaBusy ? (
                           <>
@@ -241,14 +237,13 @@ export default function Wallet() {
                           'Get my account number'
                         )}
                       </button>
-                    )}
-
-                    {vaError && <p className="mt-3 text-sm font-medium text-red-600">{vaError}</p>}
-                    {!paystackDvaEnabled && !va && (
+                    ) : (
                       <p className="mt-3 text-xs text-slate-400">
                         Bank-transfer funding is being rolled out — unavailable at the moment.
                       </p>
                     )}
+
+                    {vaError && <p className="mt-3 text-sm font-medium text-red-600">{vaError}</p>}
                   </div>
                 </div>
               </div>
